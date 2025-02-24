@@ -1,0 +1,2 @@
+cf-python>=3.16.3
+nvector>=1.0.1
