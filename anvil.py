@@ -42,16 +42,17 @@ def timeit(func):
 # Core functions
 # ----------------------------------------------------------------------------
 
-def get_env_and_diagnostics_report():
+def get_env_report():
     """Provide an optional report of environment and diagnostics.
 
     TODO: DETAILED DOCS
     """
     # Get the cf-python environment
-    cf_env = cf.environment(display=False)
+    print("cf-python environment is:")
+    cf_env = cf.environment(paths=False)
 
     # Append the nvector library details, as the other core dependency
-    print(cf_env, type(cf_env))
+    print(f"nvector version is: {nv.__version__}")
 
     logger.info(
         "Using Python and CF environment of:\n"
@@ -96,7 +97,7 @@ def get_nvectors_across_coord(field, across_latitude=True):
 
 @timeit
 def main():
-    """TODOO."""
+    """TODO."""
     # 0. Print divisions
     div = "\n---------------\n"
     new ="\n"
@@ -104,7 +105,7 @@ def main():
     # 1. Initiate tool
     print(div, "Running ANVIL", div)
     print("Using environment of:")
-    get_env_and_diagnostics_report()
+    get_env_report()
 
     # 2. Get data to use.
     # Just use an example field for now, we only care about the regular lat-lon
