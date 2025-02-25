@@ -60,11 +60,13 @@ def get_env_report():
     )
 
 
+@timeit
 def get_nvector(lats, lons):
     """TODO."""
     return nv.lat_lon2n_E(lats.data, lons.data)
 
 
+@timeit
 def get_nvectors_across_coord(field, across_latitude=True):
     """TODO
 
@@ -89,6 +91,24 @@ def get_nvectors_across_coord(field, across_latitude=True):
 
     print("n-vector list determined is:", nvectors)
     return nvectors
+
+
+@timeit
+def get_great_circle_distance(
+        n_vectors_a, n_vectors_b, earth_radius_in_m=6371007.0):
+    """TODO."""
+    gc_distances = []
+
+    # TODO: vectorise this for efficiency
+    for na, nb in zip(n_vectors_a, n_vectors_b):
+        # Based on example at:
+        # https://nvector.readthedocs.io/en/latest/tutorials/
+        # getting_started_functional.html#example-5-surface-distance
+        s_AB = nv.great_circle_distance(na, nb, radius=earth_radius_in_m)[0]
+        gc_distances.append(s_AB)
+
+    print("gc_distances final list is, with units of metres:", gc_distances)
+    return gc_distances
 
 
 # ----------------------------------------------------------------------------
@@ -128,6 +148,14 @@ def main():
 
     # 4. Get n-vectors for lat (at any, take first lon value) grid points
     nvectors = get_nvectors_across_coord(upper_hemi_lats_field)
+
+    # 5. TEST example of two points adjacent in latitude and at same longitude
+    test_point_a = nvectors[0]
+    test_point_b = nvectors[1]
+    print(f"Testing from {test_point_a} to {test_point_b}")
+    test_distance = get_great_circle_distance(
+        [test_point_a,], [test_point_b,])
+    print("Result is:", test_distance)
 
 
 
