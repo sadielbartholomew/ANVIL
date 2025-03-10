@@ -3,11 +3,19 @@ import logging
 import os
 import sys
 
-from pprint import pformat
+import numpy as np
+
+from itertools import pairwise
+from pprint import pformat, pprint
 from time import time
 
 import cf
 import nvector as nv
+
+
+# TODO eventually match to precise model value, for now always apply
+# cf-python default
+EARTH_RADIUS = cf.field._earth_radius
 
 
 # ----------------------------------------------------------------------------
@@ -48,16 +56,21 @@ def get_env_report():
     TODO: DETAILED DOCS
     """
     # Get the cf-python environment
-    print("cf-python environment is:")
+    print("Python and cf-python environment is:")
     cf_env = cf.environment(paths=False)
 
     # Append the nvector library details, as the other core dependency
-    print(f"nvector version is: {nv.__version__}")
+    print(f"nvector version is: {nv.__version__}\n")
 
-    logger.info(
-        "Using Python and CF environment of:\n"
-        f"{cf.environment(display=False)}\n"
-    )
+
+@timeit
+def get_u_field(path=None):
+    """TODO."""
+    # Use example field for now, later read in from path
+    f = cf.example_field(0)
+    print("Data using to process grid is:")
+    f.dump()
+    return f
 
 
 @timeit
@@ -95,20 +108,93 @@ def get_nvectors_across_coord(field, across_latitude=True):
 
 @timeit
 def get_great_circle_distance(
-        n_vectors_a, n_vectors_b, earth_radius_in_m=6371007.0):
-    """TODO."""
-    gc_distances = []
+        n_vector_a, n_vector_b, earth_radius_in_m=EARTH_RADIUS,
+        ec_comparison=True
+):
+    """TODO.
 
+    For a lone pair of n-vectors. For sequences use plural function
+    'get_great_circle_distances'.
+    """
+    # Based on example at:
+    # https://nvector.readthedocs.io/en/latest/tutorials/
+    # getting_started_functional.html#example-5-surface-distance
+    gc_distance = nv.great_circle_distance(
+        n_vector_a, n_vector_b, radius=earth_radius_in_m)[0]
+    print("gc_distance is (units of metres):", gc_distance)
+
+    if not ec_comparison:
+        return gc_distance
+
+    earths_circumference = 2 * np.pi * EARTH_RADIUS
+    # Round as this is intended as a reference figure so precision not req'd.
+    fraction_of_ec = round(gc_distance / earths_circumference, 3)
+
+    return gc_distance, fraction_of_ec
+
+
+@timeit
+def get_great_circle_distances(
+        n_vectors_a, n_vectors_b, earth_radius_in_m=EARTH_RADIUS,
+        ec_comparison=True
+):
+    """TODO.
+
+    For sequences of n-vectors e.g. across an axis. For singular pairs use
+    non-plural function 'get_great_circle_distance'.
+    """
+    gc_distances = []
     # TODO: vectorise this for efficiency
     for na, nb in zip(n_vectors_a, n_vectors_b):
         # Based on example at:
         # https://nvector.readthedocs.io/en/latest/tutorials/
         # getting_started_functional.html#example-5-surface-distance
-        s_AB = nv.great_circle_distance(na, nb, radius=earth_radius_in_m)[0]
+        s_AB = nv.great_circle_distance(
+            na, nb, radius=earth_radius_in_m)[0]
         gc_distances.append(s_AB)
 
-    print("gc_distances final list is, with units of metres:", gc_distances)
-    return gc_distances
+    print("gc_distances list is (units of metres):", gc_distances)
+    if not ec_comparison:
+        return gc_distances
+
+    earths_circumference = 2 * np.pi * EARTH_RADIUS
+    # Round as this is intended as a reference figure so precision not req'd.
+    fractions_of_ec = [
+        round(gc_distance / earths_circumference, 3) for
+        gc_distance in gc_distances
+    ]
+
+    return gc_distances, fractions_of_ec
+
+
+@timeit
+def basic_testing(nvectors):
+    """TODO.
+
+    TODO move out to testing module eventually.
+    """
+    nvector_respective_distances = []
+    for nv_a, nv_b in pairwise(nvectors):
+        distance = get_great_circle_distance(nv_a, nv_b)
+        nvector_respective_distances.append(distance)
+
+    print("Vectors are:")
+    pprint(nvector_respective_distances)
+
+    # Check the pairwise distances add up to the same as the distance from
+    # the first to the last
+    full_distance = get_great_circle_distance(nvectors[0], nvectors[-1])
+    print("Full distance is:", full_distance)
+    all_dist = np.sum([n[0] for n in nvector_respective_distances])
+    print("In comparison to summed distance of: ", all_dist)
+
+    # 6. FURTHER TEST demo: iteration of pairwise points, add to check distance
+    # is that expected i.e. adds to a quarter of earth's circumference
+    # SKIP FOR NOW as general, use for this three-lat case by adding above
+    # TODO
+
+    # 7. Test that the two values add up
+    # TODO
 
 
 # ----------------------------------------------------------------------------
@@ -130,9 +216,7 @@ def main():
     # 2. Get data to use.
     # Just use an example field for now, we only care about the regular lat-lon
     # grid and its resolution, not the data itself.
-    f = cf.example_field(0)
-    print("Data is:")
-    f.dump()
+    f = get_u_field()
 
     # 3. Get all latitudes in the upper hemisphere - we can reflect about the
     # hemisphere to get all the lower hemisphere equivalents and then use
@@ -149,14 +233,8 @@ def main():
     # 4. Get n-vectors for lat (at any, take first lon value) grid points
     nvectors = get_nvectors_across_coord(upper_hemi_lats_field)
 
-    # 5. TEST example of two points adjacent in latitude and at same longitude
-    test_point_a = nvectors[0]
-    test_point_b = nvectors[1]
-    print(f"Testing from {test_point_a} to {test_point_b}")
-    test_distance = get_great_circle_distance(
-        [test_point_a,], [test_point_b,])
-    print("Result is:", test_distance)
-
+    # 5. Basic testing
+    basic_testing(nvectors)
 
 
 if __name__ == "__main__":
