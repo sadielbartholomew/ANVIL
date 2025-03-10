@@ -107,6 +107,14 @@ def get_nvectors_across_coord(field, across_latitude=True):
 
 
 @timeit
+def compare_to_earth_circumference(gc_distance):
+    """TODO."""
+    earths_circumference = 2 * np.pi * EARTH_RADIUS
+    # Round as this is intended as a reference figure so precision not req'd.
+    return round(gc_distance / earths_circumference, 3)
+
+
+@timeit
 def get_great_circle_distance(
         n_vector_a, n_vector_b, earth_radius_in_m=EARTH_RADIUS,
         ec_comparison=True
@@ -126,11 +134,7 @@ def get_great_circle_distance(
     if not ec_comparison:
         return gc_distance
 
-    earths_circumference = 2 * np.pi * EARTH_RADIUS
-    # Round as this is intended as a reference figure so precision not req'd.
-    fraction_of_ec = round(gc_distance / earths_circumference, 3)
-
-    return gc_distance, fraction_of_ec
+    return gc_distance, compare_to_earth_circumference(gc_distance)
 
 
 @timeit
@@ -157,10 +161,8 @@ def get_great_circle_distances(
     if not ec_comparison:
         return gc_distances
 
-    earths_circumference = 2 * np.pi * EARTH_RADIUS
-    # Round as this is intended as a reference figure so precision not req'd.
     fractions_of_ec = [
-        round(gc_distance / earths_circumference, 3) for
+        compare_to_earth_circumference(gc_distance) for
         gc_distance in gc_distances
     ]
 
