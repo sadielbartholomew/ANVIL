@@ -80,33 +80,47 @@ def get_nvector(lats, lons):
 
 
 @timeit
-def get_nvectors_across_coord(field, across_latitude=True):
+def get_nvectors_across_coord(
+        field, across_latitude=True, include_lat_lon_ref=True):
     """TODO
 
     If across_latitude is True the nvectors will be returned for every
     latitude value of the field in order, else it will be returned for every
     longitude value in order.
     """
-    lats = field.coordinate("latitude")
-    lons = field.coordinate("longitude")
+    lats = field.coordinate("latitude").data.array
+    lons = field.coordinate("longitude").data.array
 
     # Always take the first if the other coord (lat/lon) as the one
     # to find n-vector for
     nvectors = []
+    lat_lon_ref = []
     if across_latitude:
-        for datum in lats:
-            nvector = get_nvector(datum, lons[0])
+        for lat_datum in lats:
+            coords = lat_datum, lons[0]
+            nvector = get_nvector(*coords)
             nvectors.append(nvector)
+            if include_lat_lon_ref:
+                lat_lon_ref.append(coords)
     else:
-        for datum in lons:
-            nvector = get_nvector(lats[0], lons)
+        for lon_datum in lons:
+            coords = lats[0], lon_datum
+            nvector = get_nvector(*coords)
             nvectors.append(nvector)
+            if include_lat_lon_ref:
+                lat_lon_ref.append(coords)
 
-    print("n-vector list determined is:", nvectors)
-    return nvectors
+    print("n-vector list determined is:")
+    pprint(nvectors)
+
+    if include_lat_lon_ref:
+        print("lat-lon ref. for n-vector list is:")
+        pprint(lat_lon_ref)
+        return nvectors, lat_lon_ref
+    else:
+        return nvectors
 
 
-@timeit
 def compare_to_earth_circumference(gc_distance):
     """TODO."""
     earths_circumference = 2 * np.pi * EARTH_RADIUS
@@ -170,33 +184,36 @@ def get_great_circle_distances(
 
 
 @timeit
-def basic_testing(nvectors):
+def basic_testing(nvectors, ll_ref):
     """TODO.
 
     TODO move out to testing module eventually.
     """
     nvector_respective_distances = []
+
+    for ll_a, ll_b in pairwise(ll_ref):
+        print("LL refs are:", ll_a, ll_b)
+
     for nv_a, nv_b in pairwise(nvectors):
+        print("HAVE", nv_a, nv_b)
         distance = get_great_circle_distance(nv_a, nv_b)
         nvector_respective_distances.append(distance)
 
-    print("Vectors are:")
+    print(
+        "Distances are from n-vectors (2-tuple, raw in m plus in terms of "
+        "Earth's circumference):"
+    )
     pprint(nvector_respective_distances)
 
     # Check the pairwise distances add up to the same as the distance from
     # the first to the last
     full_distance = get_great_circle_distance(nvectors[0], nvectors[-1])
-    print("Full distance is:", full_distance)
+    print("Full distance is:", full_distance, "for", ll_ref[0], ll_ref[-1])
     all_dist = np.sum([n[0] for n in nvector_respective_distances])
-    print("In comparison to summed distance of: ", all_dist)
-
-    # 6. FURTHER TEST demo: iteration of pairwise points, add to check distance
-    # is that expected i.e. adds to a quarter of earth's circumference
-    # SKIP FOR NOW as general, use for this three-lat case by adding above
-    # TODO
-
-    # 7. Test that the two values add up
-    # TODO
+    print(
+        "In comparison to summed distance along axis of: ",
+        all_dist, compare_to_earth_circumference(all_dist)
+    )
 
 
 # ----------------------------------------------------------------------------
@@ -233,10 +250,11 @@ def main():
     print("Upper hemisphere latitudes are:", upper_hemi_lats_field)
 
     # 4. Get n-vectors for lat (at any, take first lon value) grid points
-    nvectors = get_nvectors_across_coord(upper_hemi_lats_field)
+    nvectors, ll_ref = get_nvectors_across_coord(upper_hemi_lats_field)
+    print("lat and lon reference is:", ll_ref)
 
     # 5. Basic testing
-    basic_testing(nvectors)
+    basic_testing(nvectors, ll_ref)
 
 
 if __name__ == "__main__":
