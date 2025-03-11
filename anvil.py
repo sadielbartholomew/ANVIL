@@ -296,6 +296,16 @@ def basic_bearing_angle_testing(nvectors, ll_ref=None):
     get_azimuth_angle_between(nvectors[0], nvectors[-1])
 
 
+def get_gc_distance_fieldlist(field, grid_nvectors, ll_ref=None):
+    """TODO."""
+    pass
+
+
+def get_azimuth_angles_fieldlist(field, grid_nvectors, ll_ref=None):
+    """TODO."""
+    pass
+
+
 # ----------------------------------------------------------------------------
 # Main procedure
 # ----------------------------------------------------------------------------
@@ -344,12 +354,28 @@ def main():
         upper_hemi_lats_field, across_latitude=False)
     basic_bearing_angle_testing(lon_axis_nvectors, lon_axis_ll_ref)
 
-    # 7. Get grid of n-vectors for every lat-lon grid-point
-    grid_nvectors, ll_ref = get_nvectors_across_grid(upper_hemi_lats_field)
-    print(f"FULL GRID OF N-VECTORS for FIELD {upper_hemi_lats_field} IS:")
+    # 7. Get grid of n-vectors for every lat-lon grid-point. Must use original
+    # f field not upper hemi field since the latter was subspaced down but we
+    # need to find the full, original lat-lon grid of n-vectors.
+    grid_nvectors, ll_ref = get_nvectors_across_grid(f)
+    print(f"FULL GRID OF N-VECTORS for FIELD {f} IS:")
     pprint(grid_nvectors)
     print(f"WITH LAT-LON REF OF (size {len(ll_ref)}):")
     pprint(ll_ref)
+
+    # 8. Use inputs of (A) the upper hemisphere lats field, from step 3, and
+    # (B) the full lat-lon grid of n-vectors, from step 7. For each point in
+    # (A) to cover all lats for a given/set lon, find the distances and
+    # azimuths to all grid-points as organised in (B) and store these as one
+    # field each.
+    #
+    # So, for example, if there are 10 latitudes in (A) and 20 lat x 40 lon
+    # points in (B), we end up with 10 fields of 20*40=800 values each for the
+    # GC distances and a further 10 fields of 800 vaues each for the azimuth
+    # angles.
+    get_gc_distance_fieldlist(upper_hemi_lats_field, grid_nvectors, ll_ref)
+    get_azimuth_angles_fieldlist(upper_hemi_lats_field, grid_nvectors, ll_ref)
+
 
 if __name__ == "__main__":
     sys.exit(main())
