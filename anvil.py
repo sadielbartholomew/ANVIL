@@ -216,11 +216,18 @@ def basic_testing(nvectors, ll_ref):
     # the first to the last
     full_distance = get_great_circle_distance(nvectors[0], nvectors[-1])
     print("Full distance is:", full_distance, "for", ll_ref[0], ll_ref[-1])
+
     all_dist = np.sum([n[0] for n in nvector_respective_distances])
     print(
         "In comparison to summed distance along axis of: ",
         all_dist, compare_to_earth_circumference(all_dist)
     )
+
+    # Asserting that the distance from the first to last n-vector is equal to
+    # the sum of the distances from N to N+1 along the line, which it should
+    # be given that they are all on one longitude or latitude and therefore
+    # arcs along the same great circle.
+    assert full_distance[0] == all_dist
 
 
 # ----------------------------------------------------------------------------
