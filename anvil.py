@@ -17,6 +17,10 @@ import nvector as nv
 # cf-python default
 EARTH_RADIUS = cf.field._earth_radius
 
+# Use this to get a string representation of values that is '1.23' rather
+# than 'np.float64(1.23)' which is less readable for dev. & debugging
+np.set_printoptions(legacy="1.25")
+
 
 # ----------------------------------------------------------------------------
 # Set up timing and logging
