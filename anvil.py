@@ -211,11 +211,60 @@ def get_great_circle_distances(
 
 
 @timeit
-def basic_gc_distance_testing(nvectors, ll_ref=None):
-    """TODO.
+def get_azimuth_angle_between(
+        n_vector_a, n_vector_b, earth_radius_in_m=EARTH_RADIUS,
+        degrees_output=True
+):
+    """TODO."""
+    # See in the n-vector system docs, 'Example 1: A and B to delta' at:
+    # https://www.ffi.no/en/research/n-vector/#example_1
+    # where we need to find the azimuth using the Python nv library as per:
+    # https://nvector.readthedocs.io/en/latest/tutorials/
+    # getting_started_functional.html#example-1-a-and-b-to-delta
 
-    TODO move out to testing module eventually.
-    """
+    # Note: there are some documented physical limitations to this calc,
+    # for example the azimuth is undefinde at the poles. TODO watch out for
+    # this, work out how to navigate relative azimuths for calculation!
+
+    # Use the same terminology / variable names as in the Python nv library
+    # Example, to help to cross-reference and keep consistent. But we do
+    # rename our input args as:
+    # n_vector_a = n_EA_E
+    # n_vector_b = n_EB_E
+    # and we assume no height/z i.e. at Earth surface => z_EA = 0 and z_EB = 0
+    p_AB_E = nv.n_EA_E_and_n_EB_E2p_AB_E(n_vector_a, n_vector_b)
+    R_EN = nv.n_E2R_EN(n_vector_a)
+    p_AB_N = np.dot(R_EN.T, p_AB_E).ravel()
+
+    # Finally, we can bring this information together to find the azimuth
+    azimuth = np.arctan2(p_AB_N[1], p_AB_N[0])
+    if degrees_output:
+        azi_deg = nv.deg(azimuth)
+        print(
+            "Found an azimuth (relative to North) in degrees of:", azi_deg)
+        return azi_deg
+    else:
+        print("Found an azimuth (relative to North) in radians of:", azimuth)
+        return azimuth
+
+
+def get_gc_distance_fieldlist(field, grid_nvectors, ll_ref=None):
+    """TODO."""
+    pass
+
+
+def get_azimuth_angles_fieldlist(field, grid_nvectors, ll_ref=None):
+    """TODO."""
+    pass
+
+
+# ----------------------------------------------------------------------------
+# Basic testing, to be pulled out & consol'd into testing module eventually
+# ----------------------------------------------------------------------------
+
+@timeit
+def basic_gc_distance_testing(nvectors, ll_ref=None):
+    """TODO."""
     nvector_respective_distances = []
 
     if ll_ref:
@@ -252,58 +301,18 @@ def basic_gc_distance_testing(nvectors, ll_ref=None):
     assert full_distance[0] == all_dist
 
 
-@timeit
-def get_azimuth_angle_between(
-        n_vector_a, n_vector_b, earth_radius_in_m=EARTH_RADIUS,
-        degrees_output=True
-):
+def basic_azimuth_angle_testing(field):
     """TODO."""
-    # Note: there are some documented physical limitations to this calc,
-    # for example the azimuth is undefinde at the poles. TODO watch out for
-    # this, work out how to navigate relative azimuths for calculation!
-
-    # Use the same terminology / variable names as in the Python nv library
-    # Example, to help to cross-reference and keep consistent. But we do
-    # rename our input args as:
-    # n_vector_a = n_EA_E
-    # n_vector_b = n_EB_E
-    # and we assume no height/z i.e. at Earth surface => z_EA = 0 and z_EB = 0
-    p_AB_E = nv.n_EA_E_and_n_EB_E2p_AB_E(n_vector_a, n_vector_b)
-    R_EN = nv.n_E2R_EN(n_vector_a)
-    p_AB_N = np.dot(R_EN.T, p_AB_E).ravel()
-
-    # Finally, we can bring this information together to find the azimuth
-    azimuth = np.arctan2(p_AB_N[1], p_AB_N[0])
-    if degrees_output:
-        azi_deg = nv.deg(azimuth)
-        print(
-            "Found an azimuth (relative to North) in degrees of:", azi_deg)
-        return azi_deg
-    else:
-        print("Found an azimuth (relative to North) in radians of:", azimuth)
-        return azimuth
-
-
-def basic_bearing_angle_testing(nvectors, ll_ref=None):
-    """TODO."""
-    # See in the n-vector system docs, 'Example 1: A and B to delta' at:
-    # https://www.ffi.no/en/research/n-vector/#example_1
-    # where we need to find the azimuth using the Python nv library as per:
-    # https://nvector.readthedocs.io/en/latest/tutorials/
-    # getting_started_functional.html#example-1-a-and-b-to-delta
-    get_azimuth_angle_between(nvectors[0], nvectors[1])
-
-    get_azimuth_angle_between(nvectors[0], nvectors[-1])
-
-
-def get_gc_distance_fieldlist(field, grid_nvectors, ll_ref=None):
-    """TODO."""
-    pass
-
-
-def get_azimuth_angles_fieldlist(field, grid_nvectors, ll_ref=None):
-    """TODO."""
-    pass
+    nvectors, _ = get_nvectors_across_coord(
+        field, across_latitude=False)
+    # Since the n-vectors are across the lon axis, in order of increasing
+    # lon, they should be at 90 degs azimuth relative to any one before,
+    # though note complications of cyclicity meaning it might not be safe
+    # to compare to say the first and last which may be at -90 instead.
+    assert get_azimuth_angle_between(
+        nvectors[0], nvectors[1]) == 90.0
+    assert get_azimuth_angle_between(nvectors[1], nvectors[2]) == 90.0
+    # etc., but no need to test on more for a basic check/validation
 
 
 # ----------------------------------------------------------------------------
@@ -344,23 +353,21 @@ def main():
 
     # 4. Get n-vectors for lat (at any, take first lon value) grid points
     nvectors, ll_ref = get_nvectors_across_coord(upper_hemi_lats_field)
-    print("lat and lon reference is:", ll_ref)
+    print("Lat-lon reference is:", ll_ref)
 
-    # 5. Basic testing for GC distance calculation
+    # 5. Basic testing for GC distance calculation - input calc's from 4
     basic_gc_distance_testing(nvectors, ll_ref)
 
-    # 6. Basic testing for bearing/angles calculation
-    lon_axis_nvectors, lon_axis_ll_ref = get_nvectors_across_coord(
-        upper_hemi_lats_field, across_latitude=False)
-    basic_bearing_angle_testing(lon_axis_nvectors, lon_axis_ll_ref)
+    # 6. Basic testing for azimuth angle (bearing) calculation
+    basic_azimuth_angle_testing(upper_hemi_lats_field)
 
     # 7. Get grid of n-vectors for every lat-lon grid-point. Must use original
     # f field not upper hemi field since the latter was subspaced down but we
     # need to find the full, original lat-lon grid of n-vectors.
     grid_nvectors, ll_ref = get_nvectors_across_grid(f)
-    print(f"FULL GRID OF N-VECTORS for FIELD {f} IS:")
+    print(f"Full grid of n-vectors for field {f} is:")
     pprint(grid_nvectors)
-    print(f"WITH LAT-LON REF OF (size {len(ll_ref)}):")
+    print(f"Has lat-lon ref of (size {len(ll_ref)}):")
     pprint(ll_ref)
 
     # 8. Use inputs of (A) the upper hemisphere lats field, from step 3, and
