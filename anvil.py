@@ -80,7 +80,10 @@ def get_u_field(path=None):
 @timeit
 def get_nvector(lats, lons):
     """TODO."""
-    return nv.lat_lon2n_E(lats.data, lons.data)
+    # Note lat_lon2n_E expects radians so convert from degrees if those are
+    # the units. We are assuming the units come in degrees_* form and need
+    # converting, for now.
+    return nv.lat_lon2n_E(nv.rad(lats), nv.rad(lons))
 
 
 @timeit
@@ -252,6 +255,10 @@ def main():
     kwargs = {lats_key: cf.ge(0)}  # greater than or equal to 0, i.e. equator
     upper_hemi_lats_field = f.subspace(**kwargs)
     print("Upper hemisphere latitudes are:", upper_hemi_lats_field)
+
+    # FOR NOW: assuming lats and los are in degrees_* units, so need
+    # conversion to radians for n-vector libary calcs. TODO add logic to
+    # check on exact units and convert or don't as appropriate.
 
     # 4. Get n-vectors for lat (at any, take first lon value) grid points
     nvectors, ll_ref = get_nvectors_across_coord(upper_hemi_lats_field)
