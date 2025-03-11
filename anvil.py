@@ -78,12 +78,32 @@ def get_u_field(path=None):
 
 
 @timeit
-def get_nvector(lats, lons):
+def get_nvector(lat, lon):
     """TODO."""
     # Note lat_lon2n_E expects radians so convert from degrees if those are
     # the units. We are assuming the units come in degrees_* form and need
     # converting, for now.
-    return nv.lat_lon2n_E(nv.rad(lats), nv.rad(lons))
+    return nv.lat_lon2n_E(nv.rad(lat), nv.rad(lon))
+
+
+@timeit
+def get_nvectors_across_grid(field):
+    """TODO."""
+    lats = field.coordinate("latitude").data.array
+    lons = field.coordinate("longitude").data.array
+
+    # TODO change these to numpy arrays of size (1, 3) to store more
+    # efficiently
+    grid_nvectors = []
+    ll_ref = []
+    # Iterate over lats and lons to get each grid point, to store n-vector
+    for lat in lats:
+        for lon in lons:
+            grid_nvectors.append(get_nvector(lat, lon))
+            ll_ref.append((lat, lon))
+
+    # TODO document order - e.g. where start at for latitude etc.
+    return grid_nvectors, ll_ref
 
 
 @timeit
@@ -303,7 +323,6 @@ def main():
     # longitude for a given latitude.
     print("Processing latitudes")
     lats_key, lats = f.coordinate("latitude", item=True)
-
     # Subspacing to the upper hemisphere only
     kwargs = {lats_key: cf.ge(0)}  # greater than or equal to 0, i.e. equator
     upper_hemi_lats_field = f.subspace(**kwargs)
@@ -325,6 +344,12 @@ def main():
         upper_hemi_lats_field, across_latitude=False)
     basic_bearing_angle_testing(lon_axis_nvectors, lon_axis_ll_ref)
 
+    # 7. Get grid of n-vectors for every lat-lon grid-point
+    grid_nvectors, ll_ref = get_nvectors_across_grid(upper_hemi_lats_field)
+    print(f"FULL GRID OF N-VECTORS for FIELD {upper_hemi_lats_field} IS:")
+    pprint(grid_nvectors)
+    print(f"WITH LAT-LON REF OF (size {len(ll_ref)}):")
+    pprint(ll_ref)
 
 if __name__ == "__main__":
     sys.exit(main())
