@@ -191,15 +191,16 @@ def get_great_circle_distances(
 
 
 @timeit
-def basic_testing(nvectors, ll_ref):
+def basic_gc_distance_testing(nvectors, ll_ref=None):
     """TODO.
 
     TODO move out to testing module eventually.
     """
     nvector_respective_distances = []
 
-    for ll_a, ll_b in pairwise(ll_ref):
-        print("LL refs are:", ll_a, ll_b)
+    if ll_ref:
+        for ll_a, ll_b in pairwise(ll_ref):
+            print("LL refs are:", ll_a, ll_b)
 
     for nv_a, nv_b in pairwise(nvectors):
         print("HAVE", nv_a, nv_b)
@@ -215,7 +216,8 @@ def basic_testing(nvectors, ll_ref):
     # Check the pairwise distances add up to the same as the distance from
     # the first to the last
     full_distance = get_great_circle_distance(nvectors[0], nvectors[-1])
-    print("Full distance is:", full_distance, "for", ll_ref[0], ll_ref[-1])
+    if ll_ref:
+        print("Full distance is:", full_distance, "for", ll_ref[0], ll_ref[-1])
 
     all_dist = np.sum([n[0] for n in nvector_respective_distances])
     print(
@@ -228,6 +230,50 @@ def basic_testing(nvectors, ll_ref):
     # be given that they are all on one longitude or latitude and therefore
     # arcs along the same great circle.
     assert full_distance[0] == all_dist
+
+
+@timeit
+def get_azimuth_angle_between(
+        n_vector_a, n_vector_b, earth_radius_in_m=EARTH_RADIUS,
+        degrees_output=True
+):
+    """TODO."""
+    # Note: there are some documented physical limitations to this calc,
+    # for example the azimuth is undefinde at the poles. TODO watch out for
+    # this, work out how to navigate relative azimuths for calculation!
+
+    # Use the same terminology / variable names as in the Python nv library
+    # Example, to help to cross-reference and keep consistent. But we do
+    # rename our input args as:
+    # n_vector_a = n_EA_E
+    # n_vector_b = n_EB_E
+    # and we assume no height/z i.e. at Earth surface => z_EA = 0 and z_EB = 0
+    p_AB_E = nv.n_EA_E_and_n_EB_E2p_AB_E(n_vector_a, n_vector_b)
+    R_EN = nv.n_E2R_EN(n_vector_a)
+    p_AB_N = np.dot(R_EN.T, p_AB_E).ravel()
+
+    # Finally, we can bring this information together to find the azimuth
+    azimuth = np.arctan2(p_AB_N[1], p_AB_N[0])
+    if degrees_output:
+        azi_deg = nv.deg(azimuth)
+        print(
+            "Found an azimuth (relative to North) in degrees of:", azi_deg)
+        return azi_deg
+    else:
+        print("Found an azimuth (relative to North) in radians of:", azimuth)
+        return azimuth
+
+
+def basic_bearing_angle_testing(nvectors, ll_ref=None):
+    """TODO."""
+    # See in the n-vector system docs, 'Example 1: A and B to delta' at:
+    # https://www.ffi.no/en/research/n-vector/#example_1
+    # where we need to find the azimuth using the Python nv library as per:
+    # https://nvector.readthedocs.io/en/latest/tutorials/
+    # getting_started_functional.html#example-1-a-and-b-to-delta
+    get_azimuth_angle_between(nvectors[0], nvectors[1])
+
+    get_azimuth_angle_between(nvectors[0], nvectors[-1])
 
 
 # ----------------------------------------------------------------------------
@@ -271,8 +317,13 @@ def main():
     nvectors, ll_ref = get_nvectors_across_coord(upper_hemi_lats_field)
     print("lat and lon reference is:", ll_ref)
 
-    # 5. Basic testing
-    basic_testing(nvectors, ll_ref)
+    # 5. Basic testing for GC distance calculation
+    basic_gc_distance_testing(nvectors, ll_ref)
+
+    # 6. Basic testing for bearing/angles calculation
+    lon_axis_nvectors, lon_axis_ll_ref = get_nvectors_across_coord(
+        upper_hemi_lats_field, across_latitude=False)
+    basic_bearing_angle_testing(lon_axis_nvectors, lon_axis_ll_ref)
 
 
 if __name__ == "__main__":
