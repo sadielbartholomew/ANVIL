@@ -294,7 +294,6 @@ def get_gc_distance_fieldlist(
     lons = grid_nvectors_field.coordinate("longitude").data.array
     lats_len = lats.size
     lons_len = lons.size
-    #print("LENS ARE", lats_len, lons_len)
 
     # Replace the data in the field with the value of the distance to
     # the point on the grid.
@@ -309,31 +308,16 @@ def get_gc_distance_fieldlist(
     grid_nvectors_data = grid_nvectors_field.data.array
     for lat_i, lat in enumerate(lats):
         for lon_i, lon in enumerate(lons):
-
-            # For a quick check
-            if lat_i == 2 and lon_i == 2:  # test on arbitrary case
-                print(
-                    "ALL LL", lat_i, lat, lon_i, lon,
-                    output_field_for_r0[lat_i, lon_i])
-                print(output_field_for_r0[lat_i, lon_i].data)
-
-            # Find field value location in lat-lon space
-            # TODO use pre-calculated to avoid re-calc
+            # Get n-vector of relevance
             grid_nvector_comps = grid_nvectors_data[:, lat_i, lon_i]
-            print(
-                "GRID_NVECTOR COMPS IS:", grid_nvector_comps,
-                grid_nvector_comps.shape)
             # Must have size (3, 1) n-vector shape expected by nv library
             grid_nvector = grid_nvector_comps[..., np.newaxis]
-            print("GRID_NVECTOR IS:", grid_nvector, grid_nvector.shape)
-            print("R0_NVECTOR IS:", r0_nvector.shape, type(r0_nvector))
+            print("grid_nvector is:\n", grid_nvector)
+
+            # Calculate distance from the origin r0_vector and store
             gc_distance = get_great_circle_distance(
                 r0_nvector, grid_nvector, ec_comparison=False)
             output_data_array[lat_i, lon_i] = gc_distance
-
-    # Output data array is:
-    print(
-        "ODA", output_data_array.shape, output_data_array[0, 0])
 
     # As a basic test, only one point (coresponding to the r0_nvector grid
     # point) should have a 0.0 distance since it will be a coincident point
@@ -345,7 +329,6 @@ def get_gc_distance_fieldlist(
 
     # TODO, get all as fieldlist once have quick enough approach
     print("*** Final field result of:", output_field_for_r0)
-    output_field_for_r0.dump()
 
     print("*** With GC distance data of:")
     pprint(output_field_for_r0.data.array)
