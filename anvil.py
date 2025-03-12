@@ -71,13 +71,19 @@ def get_env_report():
 def get_u_field(path=None):
     """TODO."""
     # Use example field for now, later read in from path
+
+    # Regular lat-lon grid test cases. In order of low -> high resolution.
+    # Test case 1: lat x lon of 5 x 8
     f = cf.example_field(0)
+
+    # Test case 1: lat x lon of 160 x 320
+    ###f = cf.read("test_data/160by320griddata.nc")[0]
+
     print("Data using to process grid is:")
     f.dump()
     return f
 
 
-@timeit
 def get_nvector(lat, lon):
     """TODO."""
     # Note lat_lon2n_E expects radians so convert from degrees if those are
@@ -248,14 +254,77 @@ def get_azimuth_angle_between(
         return azimuth
 
 
-def get_gc_distance_fieldlist(field, grid_nvectors, ll_ref=None):
+def get_gc_distance_fieldlist(field, ll_ref=None):
     """TODO."""
-    pass
+    output_fieldlist = cf.FieldList()
+
+    output_field = field.copy()
+    # First mask all data in field, so know what has and hasn't been covered
+    output_field[:] = 0.0  # TODO raplace with masked then unmask as assign
+    count = field.count()
+    print("data is", field.data)
+    print("count is", count)
+
+    # As a test point TODO update to whole input n-vector across axis
+    r0_field = field[0, :]
+    print(
+        "R0 lat is:",
+        r0_field.coordinate("latitude").data.array[0],
+    )
+    r0_nvector = get_nvector(
+        r0_field.coordinate("latitude").data.array[0],
+        r0_field.coordinate("longitude").data.array[0]
+    )
+    print("r0_field is:", r0_field)
+    print("r0_nvector is:", r0_nvector)
+
+    # Don't take data or array as working in 'cf/field' space when need to
+    # give an output cf field.
+    lats = field.coordinate("latitude")
+    lons = field.coordinate("longitude")
+
+    # Replace the data in the field with the value of the distance to
+    # the point on the grid.
+    #
+    # TODO use Dask or vectorise etc. to make more efficient once working
+    # TODO make robust to domain axes other than lat-lon only
+    for lat_i, lat in enumerate(lats):
+        lat_val_degs = lat.data.array[0]
+        for lon_i, lon in enumerate(lons):
+            lon_val_degs = lon.data.array[0]
+
+            # For a quick check
+            if lat_i == 2 and lon_i == 2:  # test on arbitrary case
+                print(
+                    "ALL LL", field[lat_i, lon_i], lat_val_degs, lon_val_degs)
+                print(field[lat_i, lon_i].data)  # should be masked, before
+
+            # Main operation: replace missing data with the GC distance
+            # calculated for that grid point.
+
+            # Find field value location i lat-lon space
+            # TODO use pre-calculated to avoid re-calc
+            grid_nvector = get_nvector(lat_val_degs, lon_val_degs)
+            gc_distance = get_great_circle_distance(
+                r0_nvector, grid_nvector, ec_comparison=False)
+            output_field[lat_i, lon_i] = gc_distance
+
+    # TODO, get all as fieldlist once have quick enough approach
+    print("*** Final field result of:", output_field)
+    print("*** With GC distance data of:")
+    pprint(output_field.data.array)
+    output_fieldlist.append(output_field)
+
+    return output_fieldlist
 
 
 def get_azimuth_angles_fieldlist(field, grid_nvectors, ll_ref=None):
     """TODO."""
-    pass
+    output_fieldlist = cf.FieldList()
+
+    # TODO
+
+    return output_fieldlist
 
 
 # ----------------------------------------------------------------------------
@@ -380,8 +449,16 @@ def main():
     # points in (B), we end up with 10 fields of 20*40=800 values each for the
     # GC distances and a further 10 fields of 800 vaues each for the azimuth
     # angles.
-    get_gc_distance_fieldlist(upper_hemi_lats_field, grid_nvectors, ll_ref)
-    get_azimuth_angles_fieldlist(upper_hemi_lats_field, grid_nvectors, ll_ref)
+    print("Starting fieldlist calc's")
+
+    # TODO refactor to use 7 instead of re-calc for each! Requires using
+    # numpy array to store n-vectors in same dimensional structure.
+    out_f = get_gc_distance_fieldlist(f)
+    # Angles fields: TODO once have fast enough approach for the GC distance.
+    ###get_azimuth_angles_fieldlist(
+    ###    upper_hemi_lats_field, grid_nvectors, ll_ref)
+
+    cf.write(out_f, "test_outputs/out_g_distance.nc")
 
 
 if __name__ == "__main__":
