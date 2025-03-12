@@ -282,10 +282,22 @@ def get_azimuth_angle_between(
 
 def get_gc_distance_fieldlist(
         origin_nvectors, origin_ll_ref,
-        grid_nvectors_field, grid_nvectors_field_flattened
+        grid_nvectors_field, grid_nvectors_field_flattened,
 ):
     """TODO."""
-    print(origin_ll_ref)
+    return perform_operation_with_nvectors_on_origin_fl(
+        get_great_circle_distance,
+        origin_nvectors, origin_ll_ref,
+        grid_nvectors_field, grid_nvectors_field_flattened,
+    )
+
+
+def perform_operation_with_nvectors_on_origin_fl(
+        operation, origin_nvectors, origin_ll_ref,
+        grid_nvectors_field, grid_nvectors_field_flattened,
+):
+    """TODO."""
+    print("Origin LL ref is:", origin_ll_ref)
 
     # Process input grid_nvectors_field lats and lons ready to iterate over
     lats = grid_nvectors_field.coordinate("latitude").data.array
@@ -321,7 +333,7 @@ def get_gc_distance_fieldlist(
                 print("grid_nvector is:\n", grid_nvector)
 
                 # Calculate distance from the origin r0_vector and store
-                gc_distance = get_great_circle_distance(
+                gc_distance = operation(
                     r0_nvector, grid_nvector, ec_comparison=False)
                 output_data_array[lat_i, lon_i] = gc_distance
 
