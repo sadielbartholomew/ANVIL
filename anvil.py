@@ -190,7 +190,7 @@ def compare_to_earth_circumference(gc_distance):
 @timeit
 def get_great_circle_distance(
         n_vector_a, n_vector_b, earth_radius_in_m=EARTH_RADIUS,
-        ec_comparison=True
+        ec_comparison=False
 ):
     """TODO.
 
@@ -213,7 +213,7 @@ def get_great_circle_distance(
 @timeit
 def get_great_circle_distances(
         n_vectors_a, n_vectors_b, earth_radius_in_m=EARTH_RADIUS,
-        ec_comparison=True
+        ec_comparison=False
 ):
     """TODO.
 
@@ -280,20 +280,8 @@ def get_azimuth_angle_between(
         return azimuth
 
 
-def get_gc_distance_fieldlist(
-        origin_nvectors, origin_ll_ref,
-        grid_nvectors_field, grid_nvectors_field_flattened,
-):
-    """TODO."""
-    return perform_operation_with_nvectors_on_origin_fl(
-        get_great_circle_distance,
-        origin_nvectors, origin_ll_ref,
-        grid_nvectors_field, grid_nvectors_field_flattened,
-    )
-
-
 def perform_operation_with_nvectors_on_origin_fl(
-        operation, origin_nvectors, origin_ll_ref,
+        operation, long_name_start, origin_nvectors, origin_ll_ref,
         grid_nvectors_field, grid_nvectors_field_flattened,
 ):
     """TODO."""
@@ -333,14 +321,8 @@ def perform_operation_with_nvectors_on_origin_fl(
                 print("grid_nvector is:\n", grid_nvector)
 
                 # Calculate distance from the origin r0_vector and store
-                gc_distance = operation(
-                    r0_nvector, grid_nvector, ec_comparison=False)
+                gc_distance = operation(r0_nvector, grid_nvector)
                 output_data_array[lat_i, lon_i] = gc_distance
-
-        # As a basic test, only one point (coresponding to the r0_nvector grid
-        # point) should have a 0.0 distance since it will be a coincident point
-        assert (
-            np.count_nonzero(output_data_array) + 1 == output_data_array.size)
 
         # TODO re-set standard name.
 
@@ -355,7 +337,7 @@ def perform_operation_with_nvectors_on_origin_fl(
         # is for.
         r0_lat, r0_lon = origin_ll_ref[r0_i]
         output_field_for_r0.long_name = (
-            f"great_circle_distances_from_point_at_lat_{r0_lat}_lon_{r0_lon}"
+            f"{long_name_start}_from_point_at_lat_{r0_lat}_lon_{r0_lon}"
         )
 
         output_fieldlist.append(output_field_for_r0)
@@ -363,13 +345,28 @@ def perform_operation_with_nvectors_on_origin_fl(
     return output_fieldlist
 
 
-def get_azimuth_angles_fieldlist(field, grid_nvectors, ll_ref=None):
+def get_gc_distance_fieldlist(
+        origin_nvectors, origin_ll_ref,
+        grid_nvectors_field, grid_nvectors_field_flattened,
+):
     """TODO."""
-    output_fieldlist = cf.FieldList()
+    return perform_operation_with_nvectors_on_origin_fl(
+        get_great_circle_distance, "great_circle_distance",
+        origin_nvectors, origin_ll_ref,
+        grid_nvectors_field, grid_nvectors_field_flattened,
+    )
 
-    # TODO
 
-    return output_fieldlist
+def get_azimuth_angles_fieldlist(
+        origin_nvectors, origin_ll_ref,
+        grid_nvectors_field, grid_nvectors_field_flattened,
+):
+    """TODO."""
+    return perform_operation_with_nvectors_on_origin_fl(
+        get_azimuth_angle_between, "azimuth_angle",
+        origin_nvectors, origin_ll_ref,
+        grid_nvectors_field, grid_nvectors_field_flattened,
+    )
 
 
 # ----------------------------------------------------------------------------
@@ -386,8 +383,8 @@ def basic_gc_distance_testing(nvectors, ll_ref=None):
             print("LL refs are:", ll_a, ll_b)
 
     for nv_a, nv_b in pairwise(nvectors):
-        print("HAVE", nv_a, nv_b)
-        distance = get_great_circle_distance(nv_a, nv_b)
+        print("Have:", nv_a, nv_b)
+        distance = get_great_circle_distance(nv_a, nv_b, ec_comparison=True)
         nvector_respective_distances.append(distance)
 
     print(
@@ -398,7 +395,8 @@ def basic_gc_distance_testing(nvectors, ll_ref=None):
 
     # Check the pairwise distances add up to the same as the distance from
     # the first to the last
-    full_distance = get_great_circle_distance(nvectors[0], nvectors[-1])
+    full_distance = get_great_circle_distance(
+        nvectors[0], nvectors[-1], ec_comparison=True)
     if ll_ref:
         print("Full distance is:", full_distance, "for", ll_ref[0], ll_ref[-1])
 
@@ -502,6 +500,10 @@ def main():
         f"{len(cc_distance_example_fl)} fields in result."
     )
     for f in cc_distance_example_fl:
+        # As a basic test, only one point (coresponding to the r0_nvector grid
+        # point) should have a 0.0 distance since it will be a coincident point
+        f_data = f.data.array
+        assert (np.count_nonzero(f_data) + 1 == f_data.size)
         print(
             f"\nOutput gc distance field with name '{f.long_name}' "
             f"has data of {f.data}."
@@ -513,6 +515,20 @@ def main():
     #     TODO once have fast enough approach for the GC distance.
     ###get_azimuth_angles_fieldlist(
     ###    upper_hemi_lats_field, grid_nvectors, ll_ref)
+    print("Starting FieldList calculations for azimuth angle.")
+    cc_distance_example_fl = get_azimuth_angles_fieldlist(
+        origin_nvectors, origin_ll_ref, grid_nvectors_field, f)
+    print(
+        "\n*** Done FieldList calculations for azimuth angle. Have total of "
+        f"{len(cc_distance_example_fl)} fields in result."
+    )
+    for f in cc_distance_example_fl:
+        print(
+            f"\nOutput azimuth angle field with name '{f.long_name}' "
+            f"has data of {f.data}."
+        )
+
+    cf.write(cc_distance_example_fl, "test_outputs/out_azimuth_angle.nc")
 
 
 if __name__ == "__main__":
