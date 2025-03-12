@@ -281,58 +281,72 @@ def get_azimuth_angle_between(
 
 
 def get_gc_distance_fieldlist(
-        origin_nvectors, grid_nvectors_field, grid_nvectors_field_flattened):
+        origin_nvectors, origin_ll_ref,
+        grid_nvectors_field, grid_nvectors_field_flattened
+):
     """TODO."""
-    output_fieldlist = cf.FieldList()
+    print(origin_ll_ref)
 
-    # TODO taking first as an example for now
-    r0_nvector = origin_nvectors[0]
-    output_field_for_r0 = grid_nvectors_field_flattened.copy()
-    print("OUTPUT FIELD WILL BE", output_field_for_r0)
-
+    # Process input grid_nvectors_field lats and lons ready to iterate over
     lats = grid_nvectors_field.coordinate("latitude").data.array
     lons = grid_nvectors_field.coordinate("longitude").data.array
     lats_len = lats.size
     lons_len = lons.size
 
-    # Replace the data in the field with the value of the distance to
-    # the point on the grid.
-    #
-    # TODO use Dask or vectorise etc. to make more efficient once working
-    # TODO make robust to domain axes other than lat-lon only
+    output_fieldlist = cf.FieldList()
+    # Iterate over all input origin_nvectors
+    for r0_i, r0_nvector in enumerate(origin_nvectors):
+        output_field_for_r0 = grid_nvectors_field_flattened.copy()
+        print("Output field metadata will be", output_field_for_r0)
 
-    # Re-set all data at once, so create as full numpy array before re-setting
-    result_data_size = (lats_len, lons_len)
-    #output_data_array = np.zeros(nv_data_size)  # 3 for 3 comps to an n-vector
-    output_data_array = np.zeros(result_data_size)
-    grid_nvectors_data = grid_nvectors_field.data.array
-    for lat_i, lat in enumerate(lats):
-        for lon_i, lon in enumerate(lons):
-            # Get n-vector of relevance
-            grid_nvector_comps = grid_nvectors_data[:, lat_i, lon_i]
-            # Must have size (3, 1) n-vector shape expected by nv library
-            grid_nvector = grid_nvector_comps[..., np.newaxis]
-            print("grid_nvector is:\n", grid_nvector)
+        # Replace the data in the field with the value of the distance to
+        # the point on the grid.
+        #
+        # TODO use Dask or vectorise etc. to make more efficient once working
+        # TODO make robust to domain axes other than lat-lon only
 
-            # Calculate distance from the origin r0_vector and store
-            gc_distance = get_great_circle_distance(
-                r0_nvector, grid_nvector, ec_comparison=False)
-            output_data_array[lat_i, lon_i] = gc_distance
+        # Re-set all data at once, so create as full numpy array before
+        # re-setting
+        result_data_size = (lats_len, lons_len)
+        #output_data_array = np.zeros(nv_data_size)  # 3 for 3 comps to
+        # an n-vector
+        output_data_array = np.zeros(result_data_size)
+        grid_nvectors_data = grid_nvectors_field.data.array
+        for lat_i, lat in enumerate(lats):
+            for lon_i, lon in enumerate(lons):
+                # Get n-vector of relevance
+                grid_nvector_comps = grid_nvectors_data[:, lat_i, lon_i]
+                # Must have size (3, 1) n-vector shape expected by nv library
+                grid_nvector = grid_nvector_comps[..., np.newaxis]
+                print("grid_nvector is:\n", grid_nvector)
 
-    # As a basic test, only one point (coresponding to the r0_nvector grid
-    # point) should have a 0.0 distance since it will be a coincident point
-    assert np.count_nonzero(output_data_array) + 1 == output_data_array.size
+                # Calculate distance from the origin r0_vector and store
+                gc_distance = get_great_circle_distance(
+                    r0_nvector, grid_nvector, ec_comparison=False)
+                output_data_array[lat_i, lon_i] = gc_distance
 
-    # TODO re-set standard name.
-    # Now set data array all at once, to avoid multiple setting operations
-    output_field_for_r0.set_data(output_data_array)
+        # As a basic test, only one point (coresponding to the r0_nvector grid
+        # point) should have a 0.0 distance since it will be a coincident point
+        assert (
+            np.count_nonzero(output_data_array) + 1 == output_data_array.size)
 
-    # TODO, get all as fieldlist once have quick enough approach
-    print("*** Final field result of:", output_field_for_r0)
+        # TODO re-set standard name.
 
-    print("*** With GC distance data of:")
-    pprint(output_field_for_r0.data.array)
-    output_fieldlist.append(output_field_for_r0)
+        # Now set data array all at once, to avoid multiple setting operations
+        output_field_for_r0.set_data(output_data_array)
+
+        # Finally, add to FieldList to store outputs
+        print("*** Final field result of:", output_field_for_r0)
+        pprint(output_field_for_r0.data.array)
+
+        # Label the field by name so we know which lat-lon the origin r_nvector
+        # is for.
+        r0_lat, r0_lon = origin_ll_ref[r0_i]
+        output_field_for_r0.long_name = (
+            f"great_circle_distances_from_point_at_lat_{r0_lat}_lon_{r0_lon}"
+        )
+
+        output_fieldlist.append(output_field_for_r0)
 
     return output_fieldlist
 
@@ -440,11 +454,12 @@ def main():
     # check on exact units and convert or don't as appropriate.
 
     # 4. Get n-vectors for lat (at any, take first lon value) grid points
-    origin_nvectors, ll_ref = get_nvectors_across_coord(upper_hemi_lats_field)
-    print("Lat-lon reference is:", ll_ref)
+    origin_nvectors, origin_ll_ref = get_nvectors_across_coord(
+        upper_hemi_lats_field)
+    print("Lat-lon reference is:", origin_ll_ref)
 
     # 5. Basic testing for GC distance calculation - input calc's from 4
-    basic_gc_distance_testing(origin_nvectors, ll_ref)
+    basic_gc_distance_testing(origin_nvectors, origin_ll_ref)
 
     # 6. Basic testing for azimuth angle (bearing) calculation
     basic_azimuth_angle_testing(upper_hemi_lats_field)
@@ -466,12 +481,21 @@ def main():
     # points in (B), we end up with 10 fields of 20*40=800 values each for the
     # GC distances and a further 10 fields of 800 vaues each for the azimuth
     # angles.
-    print("Starting fieldlist calc's")
-
     # 9. Get fields with GC distances
-    cc_distance_example_f = get_gc_distance_fieldlist(
-        origin_nvectors, grid_nvectors_field, f)
-    cf.write(cc_distance_example_f, "test_outputs/out_gc_distance.nc")
+    print("Starting FieldList calculations for GC distance.")
+    cc_distance_example_fl = get_gc_distance_fieldlist(
+        origin_nvectors, origin_ll_ref, grid_nvectors_field, f)
+    print(
+        "\n*** Done FieldList calculations for GC distance. Have total of "
+        f"{len(cc_distance_example_fl)} fields in result."
+    )
+    for f in cc_distance_example_fl:
+        print(
+            f"\nOutput gc distance field with name '{f.long_name}' "
+            f"has data of {f.data}."
+        )
+
+    cf.write(cc_distance_example_fl, "test_outputs/out_gc_distance.nc")
 
     # 10. Get fields with bearings (azimuth angles)
     #     TODO once have fast enough approach for the GC distance.
