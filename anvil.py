@@ -95,21 +95,47 @@ def get_nvector(lat, lon):
 @timeit
 def get_nvectors_across_grid(field):
     """TODO."""
+
     lats = field.coordinate("latitude").data.array
     lons = field.coordinate("longitude").data.array
+    lats_len = lats.size
+    lons_len = lons.size
 
-    # TODO change these to numpy arrays of size (1, 3) to store more
-    # efficiently
-    grid_nvectors = []
-    ll_ref = []
-    # Iterate over lats and lons to get each grid point, to store n-vector
-    for lat in lats:
-        for lon in lons:
-            grid_nvectors.append(get_nvector(lat, lon))
-            ll_ref.append((lat, lon))
+    nv_data_size = (3, lats_len, lons_len)
+    output_data_array = np.zeros(nv_data_size)  # 3 for 3 comps to an n-vector
+    for lat_i, lat in enumerate(lats):
+        for lon_i, lon in enumerate(lons):
+            # For a quick check
+            if lat_i == 2 and lon_i == 2:  # test on arbitrary case
+                print(
+                    "ALL LL", lat_i, lat, lon_i, lon, field[lat_i, lon_i])
+            # Squeeze to unpack from (3, 1) default shape to (3,) required
+            grid_nvector = get_nvector(lat, lon).squeeze()
+            print("NVECTOR IS", grid_nvector, grid_nvector.shape)
+            output_data_array[:, lat_i, lon_i] = grid_nvector
 
-    # TODO document order - e.g. where start at for latitude etc.
-    return grid_nvectors, ll_ref
+    output_field = field.copy().squeeze()  # squeeze out time
+    # Need to create a new domain axis of size three to hold the n-vector
+    # components
+    # Using https://ncas-cms.github.io/cf-python/tutorial.html#id253 as guide
+    nvector_component_axis = output_field.set_construct(cf.DomainAxis(3))
+    # Note: no need for new dimension coordinate but still nice to have named
+    dc = cf.DimensionCoordinate()
+    dc.set_data(cf.Data([0, 1, 2]))
+    dc.set_property("long_name", "nvector_components")
+    nv_key = output_field.set_construct(dc, axes=nvector_component_axis)
+
+    print("out field", output_field)
+    output_field.dump()
+    # TODO re-set standard name.
+    # Now set data array all at once, to avoid multiple setting operations
+    output_field.set_data(
+        output_data_array,
+        axes=(nvector_component_axis,) + output_field.get_data_axes()
+    )
+    # TODO Change names and units to be appropriate
+
+    return output_field
 
 
 @timeit
@@ -254,66 +280,76 @@ def get_azimuth_angle_between(
         return azimuth
 
 
-def get_gc_distance_fieldlist(field, ll_ref=None):
+def get_gc_distance_fieldlist(
+        origin_nvectors, grid_nvectors_field, grid_nvectors_field_flattened):
     """TODO."""
     output_fieldlist = cf.FieldList()
 
-    output_field = field.copy()
-    # First mask all data in field, so know what has and hasn't been covered
-    output_field[:] = 0.0  # TODO raplace with masked then unmask as assign
-    count = field.count()
-    print("data is", field.data)
-    print("count is", count)
+    # TODO taking first as an example for now
+    r0_nvector = origin_nvectors[0]
+    output_field_for_r0 = grid_nvectors_field_flattened.copy()
+    print("OUTPUT FIELD WILL BE", output_field_for_r0)
 
-    # As a test point TODO update to whole input n-vector across axis
-    r0_field = field[0, :]
-    print(
-        "R0 lat is:",
-        r0_field.coordinate("latitude").data.array[0],
-    )
-    r0_nvector = get_nvector(
-        r0_field.coordinate("latitude").data.array[0],
-        r0_field.coordinate("longitude").data.array[0]
-    )
-    print("r0_field is:", r0_field)
-    print("r0_nvector is:", r0_nvector)
-
-    # Don't take data or array as working in 'cf/field' space when need to
-    # give an output cf field.
-    lats = field.coordinate("latitude")
-    lons = field.coordinate("longitude")
+    lats = grid_nvectors_field.coordinate("latitude").data.array
+    lons = grid_nvectors_field.coordinate("longitude").data.array
+    lats_len = lats.size
+    lons_len = lons.size
+    #print("LENS ARE", lats_len, lons_len)
 
     # Replace the data in the field with the value of the distance to
     # the point on the grid.
     #
     # TODO use Dask or vectorise etc. to make more efficient once working
     # TODO make robust to domain axes other than lat-lon only
+
+    # Re-set all data at once, so create as full numpy array before re-setting
+    result_data_size = (lats_len, lons_len)
+    #output_data_array = np.zeros(nv_data_size)  # 3 for 3 comps to an n-vector
+    output_data_array = np.zeros(result_data_size)
+    grid_nvectors_data = grid_nvectors_field.data.array
     for lat_i, lat in enumerate(lats):
-        lat_val_degs = lat.data.array[0]
         for lon_i, lon in enumerate(lons):
-            lon_val_degs = lon.data.array[0]
 
             # For a quick check
             if lat_i == 2 and lon_i == 2:  # test on arbitrary case
                 print(
-                    "ALL LL", field[lat_i, lon_i], lat_val_degs, lon_val_degs)
-                print(field[lat_i, lon_i].data)  # should be masked, before
+                    "ALL LL", lat_i, lat, lon_i, lon,
+                    output_field_for_r0[lat_i, lon_i])
+                print(output_field_for_r0[lat_i, lon_i].data)
 
-            # Main operation: replace missing data with the GC distance
-            # calculated for that grid point.
-
-            # Find field value location i lat-lon space
+            # Find field value location in lat-lon space
             # TODO use pre-calculated to avoid re-calc
-            grid_nvector = get_nvector(lat_val_degs, lon_val_degs)
+            grid_nvector_comps = grid_nvectors_data[:, lat_i, lon_i]
+            print(
+                "GRID_NVECTOR COMPS IS:", grid_nvector_comps,
+                grid_nvector_comps.shape)
+            # Must have size (3, 1) n-vector shape expected by nv library
+            grid_nvector = grid_nvector_comps[..., np.newaxis]
+            print("GRID_NVECTOR IS:", grid_nvector, grid_nvector.shape)
+            print("R0_NVECTOR IS:", r0_nvector.shape, type(r0_nvector))
             gc_distance = get_great_circle_distance(
                 r0_nvector, grid_nvector, ec_comparison=False)
-            output_field[lat_i, lon_i] = gc_distance
+            output_data_array[lat_i, lon_i] = gc_distance
+
+    # Output data array is:
+    print(
+        "ODA", output_data_array.shape, output_data_array[0, 0])
+
+    # As a basic test, only one point (coresponding to the r0_nvector grid
+    # point) should have a 0.0 distance since it will be a coincident point
+    assert np.count_nonzero(output_data_array) + 1 == output_data_array.size
+
+    # TODO re-set standard name.
+    # Now set data array all at once, to avoid multiple setting operations
+    output_field_for_r0.set_data(output_data_array)
 
     # TODO, get all as fieldlist once have quick enough approach
-    print("*** Final field result of:", output_field)
+    print("*** Final field result of:", output_field_for_r0)
+    output_field_for_r0.dump()
+
     print("*** With GC distance data of:")
-    pprint(output_field.data.array)
-    output_fieldlist.append(output_field)
+    pprint(output_field_for_r0.data.array)
+    output_fieldlist.append(output_field_for_r0)
 
     return output_fieldlist
 
@@ -421,11 +457,11 @@ def main():
     # check on exact units and convert or don't as appropriate.
 
     # 4. Get n-vectors for lat (at any, take first lon value) grid points
-    nvectors, ll_ref = get_nvectors_across_coord(upper_hemi_lats_field)
+    origin_nvectors, ll_ref = get_nvectors_across_coord(upper_hemi_lats_field)
     print("Lat-lon reference is:", ll_ref)
 
     # 5. Basic testing for GC distance calculation - input calc's from 4
-    basic_gc_distance_testing(nvectors, ll_ref)
+    basic_gc_distance_testing(origin_nvectors, ll_ref)
 
     # 6. Basic testing for azimuth angle (bearing) calculation
     basic_azimuth_angle_testing(upper_hemi_lats_field)
@@ -433,11 +469,9 @@ def main():
     # 7. Get grid of n-vectors for every lat-lon grid-point. Must use original
     # f field not upper hemi field since the latter was subspaced down but we
     # need to find the full, original lat-lon grid of n-vectors.
-    grid_nvectors, ll_ref = get_nvectors_across_grid(f)
-    print(f"Full grid of n-vectors for field {f} is:")
-    pprint(grid_nvectors)
-    print(f"Has lat-lon ref of (size {len(ll_ref)}):")
-    pprint(ll_ref)
+    grid_nvectors_field = get_nvectors_across_grid(f)
+    print(f"Full grid of n-vectors for field {f!r} is:")
+    grid_nvectors_field.dump()
 
     # 8. Use inputs of (A) the upper hemisphere lats field, from step 3, and
     # (B) the full lat-lon grid of n-vectors, from step 7. For each point in
@@ -451,14 +485,15 @@ def main():
     # angles.
     print("Starting fieldlist calc's")
 
-    # TODO refactor to use 7 instead of re-calc for each! Requires using
-    # numpy array to store n-vectors in same dimensional structure.
-    out_f = get_gc_distance_fieldlist(f)
-    # Angles fields: TODO once have fast enough approach for the GC distance.
+    # 9. Get fields with GC distances
+    cc_distance_example_f = get_gc_distance_fieldlist(
+        origin_nvectors, grid_nvectors_field, f)
+    cf.write(cc_distance_example_f, "test_outputs/out_gc_distance.nc")
+
+    # 10. Get fields with bearings (azimuth angles)
+    #     TODO once have fast enough approach for the GC distance.
     ###get_azimuth_angles_fieldlist(
     ###    upper_hemi_lats_field, grid_nvectors, ll_ref)
-
-    cf.write(out_f, "test_outputs/out_g_distance.nc")
 
 
 if __name__ == "__main__":
