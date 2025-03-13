@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 
+###import numba  # experimental
 import numpy as np
 
 from itertools import pairwise
@@ -321,19 +322,29 @@ def perform_nvector_field_iteration(
     # re-setting
     #output_data_array = np.zeros(nv_data_size)  # 3 for 3 comps to
     # an n-vector
-    output_data_array = np.zeros(result_data_size)
     grid_nvectors_data = grid_nvectors_field.data.array
-    for lat_i, lat in enumerate(lats):
-        for lon_i, lon in enumerate(lons):
-            # Get n-vector of relevance
-            grid_nvector_comps = grid_nvectors_data[:, lat_i, lon_i]
-            # Must have size (3, 1) n-vector shape expected by nv library
-            grid_nvector = grid_nvector_comps[..., np.newaxis]
-            ###print("grid_nvector is:\n", grid_nvector)
 
-            # Calculate distance from the origin r0_vector and store
-            gc_distance = operation(r0_nvector, grid_nvector)
-            output_data_array[lat_i, lon_i] = gc_distance
+    # Use a (partially / most as can) vectorised approach for efficiency!
+    # Fow now, this has slowed us down! Compared to ~180s per field, have:
+    # Time taken (in s) for 'perform_nvector_field_iteration' to run: 247.9112
+    # but when we use Dask or numba this should improve greatly
+
+    # Shape: (lat_size, lon_size)
+    output_data_array = np.zeros_like(grid_nvectors_data[0])
+
+    # Reshape to (3, lat_size * lon_size)
+    grid_nvectors = grid_nvectors_data.reshape(3, -1)
+
+    def compute_distance(grid_nvector_1D):
+        grid_nvector = grid_nvector_1D[:, np.newaxis]  # Reshape to (3,1)
+        return operation(r0_nvector, grid_nvector)
+
+    # Apply function along axis 0 (across all lat/lon grid points)
+    # Shape: (lat_size * lon_size,)
+    gc_distances = np.apply_along_axis(compute_distance, 0, grid_nvectors)
+
+    # Reshape back to 2D grid
+    output_data_array[:] = gc_distances.reshape(output_data_array.shape)
 
     # TODO re-set standard name.
 
