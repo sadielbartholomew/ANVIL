@@ -3,11 +3,7 @@ import logging
 import os
 import sys
 
-import numba  # experimental
-from numba.extending import overload_method  # even more experimental
-#import dask.array as da
-#from dask import delayed, compute
-
+###import numba  # experimental
 import numpy as np
 
 from itertools import pairwise
@@ -20,8 +16,7 @@ import nvector as nv
 
 # TODO eventually match to precise model value, for now always apply
 # cf-python default
-# MUST GET AS NP ARRAY RATHER THAN CF OBJECT ELSE NUMBA FAILS ON CF HASHABLES
-EARTH_RADIUS = cf.field._earth_radius.array.item()
+EARTH_RADIUS = cf.field._earth_radius
 
 # Use this to get a string representation of values that is '1.23' rather
 # than 'np.float64(1.23)' which is less readable for dev. & debugging
@@ -206,17 +201,15 @@ def get_nvectors_across_coord(
     else:
         return nvectors
 
-# Not actually used for comp-heavy cases, but to keep numba happy decorate:
-@numba.njit
+
 def compare_to_earth_circumference(gc_distance):
     """TODO."""
     earths_circumference = 2 * np.pi * EARTH_RADIUS
     # Round as this is intended as a reference figure so precision not req'd.
     return round(gc_distance / earths_circumference, 3)
 
+
 ###@timeit
-###@numba.njit(nopython=True)
-@numba.njit
 def get_great_circle_distance(
         n_vector_a, n_vector_b, earth_radius_in_m=EARTH_RADIUS,
         ec_comparison=False
@@ -309,24 +302,6 @@ def get_azimuth_angle_between(
         return azimuth
 
 
-# JIT-compile the function for maximum speed
-# JIT-compiled function that accepts `operation` as a parameter
-@numba.njit(parallel=True)
-def compute_distances_numba(grid_nvectors_data, r0_nvector, operation):
-    lat_size, lon_size = grid_nvectors_data.shape[1], grid_nvectors_data.shape[2]
-    output = np.zeros((lat_size, lon_size))  # Pre-allocate output array
-
-    for lat_i in numba.prange(lat_size):  # Parallelized loop
-        for lon_i in range(lon_size):  # Sequential inner loop for efficiency
-            # Reshape to (3,1)
-            grid_nvector = grid_nvectors_data[:, lat_i, lon_i][:, np.newaxis]
-
-            # Call the passed operation
-            output[lat_i, lon_i] = operation(r0_nvector, grid_nvector)
-
-    return output
-
-
 @timeit
 def perform_nvector_field_iteration(
         r0_i, r0_nvector, result_data_size, lats, lons,
@@ -336,7 +311,6 @@ def perform_nvector_field_iteration(
     """TODO."""
     output_field_for_r0 = grid_nvectors_field_flattened.copy()
     print("Output field metadata will be", output_field_for_r0)
-
 
     # Replace the data in the field with the value of the distance to
     # the point on the grid.
@@ -348,21 +322,29 @@ def perform_nvector_field_iteration(
     # re-setting
     #output_data_array = np.zeros(nv_data_size)  # 3 for 3 comps to
     # an n-vector
-
-    # START OF BLOCK FOR OPTIMISATION
     grid_nvectors_data = grid_nvectors_field.data.array
 
-    # Run the optimized function
-    print("TYPES ARE",
-          type(grid_nvectors_data), type(r0_nvector), type(operation),
-          #grid_nvectors_data.__hash__(), r0_nvector.__hash__(),
-          #operation.__hash__()
-    )
-    print("NAMES", operation.__code__.co_names)
-    output_data_array = compute_distances_numba(
-        grid_nvectors_data, r0_nvector, operation)
+    # Use a (partially / most as can) vectorised approach for efficiency!
+    # Fow now, this has slowed us down! Compared to ~180s per field, have:
+    # Time taken (in s) for 'perform_nvector_field_iteration' to run: 247.9112
+    # but when we use Dask or numba this should improve greatly
 
-    # END OF BLOCK FOR OPTIMISATION
+    # Shape: (lat_size, lon_size)
+    output_data_array = np.zeros_like(grid_nvectors_data[0])
+
+    # Reshape to (3, lat_size * lon_size)
+    grid_nvectors = grid_nvectors_data.reshape(3, -1)
+
+    def compute_distance(grid_nvector_1D):
+        grid_nvector = grid_nvector_1D[:, np.newaxis]  # Reshape to (3,1)
+        return operation(r0_nvector, grid_nvector)
+
+    # Apply function along axis 0 (across all lat/lon grid points)
+    # Shape: (lat_size * lon_size,)
+    gc_distances = np.apply_along_axis(compute_distance, 0, grid_nvectors)
+
+    # Reshape back to 2D grid
+    output_data_array[:] = gc_distances.reshape(output_data_array.shape)
 
     # TODO re-set standard name.
 
