@@ -289,7 +289,7 @@ def get_azimuth_angle_between(
     # and we assume no height/z i.e. at Earth surface => z_EA = 0 and z_EB = 0
     p_AB_E = nv.n_EA_E_and_n_EB_E2p_AB_E(n_vector_a, n_vector_b)
     R_EN = nv.n_E2R_EN(n_vector_a)
-    p_AB_N = np.dot(R_EN.T, p_AB_E).ravel()
+    p_AB_N = np.dot(R_EN.T, p_AB_E)
 
     # Finally, we can bring this information together to find the azimuth
     azimuth = np.arctan2(p_AB_N[1], p_AB_N[0])
