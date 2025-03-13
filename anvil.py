@@ -88,9 +88,13 @@ def get_u_field(path=None):
     # Test case 4: lat x lon of 160 x 320
     f = cf.read("test_data/160by320griddata.nc")[0].squeeze()
     # SLB timings 12/03/25: ???
-    # To calculate one full GCD field, ~124s i.e. ~ 2 minutes. Would need to
-    # calculate 160/2 = 80 => expect it to take 2m * 80 = 160 mins for all of
-    # the GC distance fields.
+    # _____ Time taken (in s) for
+    # 'perform_nvector_field_iteration' to run: 180.7028 _____
+    # _____ Time taken (in s) for
+    # 'perform_nvector_field_iteration' to run: 181.1562 _____
+    # To calculate one full GCD field, ~180 i.e. ~3 minutes. Would need to
+    # calculate 160/2 = 80 => expect it to take 3m * 80 = 240 mins = 4 hours
+    # for all of the GC distance fields.
     # Time taken (in s) for 'perform_nvector_field_iteration' to run: 123.7935
     # To calculate one full azimuth angle field, takes ~7-12 seconds =>
     # expect 80 * 10 = 800 seconds = ~14 minutes for all the azimuth fields.
@@ -219,7 +223,7 @@ def get_great_circle_distance(
     # getting_started_functional.html#example-5-surface-distance
     gc_distance = nv.great_circle_distance(
         n_vector_a, n_vector_b, radius=earth_radius_in_m)[0]
-    print("gc_distance is (units of metres):", gc_distance)
+    ###print("gc_distance is (units of metres):", gc_distance)
 
     if not ec_comparison:
         return gc_distance
@@ -415,7 +419,7 @@ def basic_gc_distance_testing(nvectors, ll_ref=None):
 
     for nv_a, nv_b in pairwise(nvectors):
         print("Have:", nv_a, nv_b)
-        distance = get_great_circle_distance(nv_a, nv_b, ec_comparison=True)
+        distance = get_great_circle_distance(nv_a, nv_b)
         nvector_respective_distances.append(distance)
 
     print(
@@ -523,7 +527,6 @@ def main():
     # GC distances and a further 10 fields of 800 vaues each for the azimuth
     # angles.
     # 9. Get fields with GC distances
-    """
     print("Starting FieldList calculations for GC distance.")
     cc_distance_example_fl = get_gc_distance_fieldlist(
         origin_nvectors, origin_ll_ref, grid_nvectors_field, f)
@@ -542,7 +545,6 @@ def main():
         )
 
     cf.write(cc_distance_example_fl, "test_outputs/out_gc_distance.nc")
-    """
 
     # 10. Get fields with bearings (azimuth angles)
     #     TODO once have fast enough approach for the GC distance.
