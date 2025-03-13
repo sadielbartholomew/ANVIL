@@ -3,7 +3,6 @@ import logging
 import os
 import sys
 
-###import numba  # experimental
 import numpy as np
 
 from itertools import pairwise
@@ -16,7 +15,9 @@ import nvector as nv
 
 # TODO eventually match to precise model value, for now always apply
 # cf-python default
-EARTH_RADIUS = cf.field._earth_radius
+# Grab float value to use instead of cf-python object which may cause issue
+# for optimisation strategies.
+EARTH_RADIUS = cf.field._earth_radius.array.item()
 
 # Use this to get a string representation of values that is '1.23' rather
 # than 'np.float64(1.23)' which is less readable for dev. & debugging
@@ -336,6 +337,7 @@ def perform_nvector_field_iteration(
     grid_nvectors = grid_nvectors_data.reshape(3, -1)
 
     def compute_distance(grid_nvector_1D):
+        """TODO."""
         grid_nvector = grid_nvector_1D[:, np.newaxis]  # Reshape to (3,1)
         return operation(r0_nvector, grid_nvector)
 
@@ -356,11 +358,12 @@ def perform_nvector_field_iteration(
     pprint(output_field_for_r0.data.array)
 
     # Label the field by name so we know which lat-lon the origin r_nvector
-    # is for.
+    # is for
     r0_lat, r0_lon = origin_ll_ref[r0_i]
     output_field_for_r0.long_name = (
         f"{long_name_start}_from_point_at_lat_{r0_lat}_lon_{r0_lon}"
     )
+    print("Name is", output_field_for_r0.long_name)
 
     return output_field_for_r0
 
@@ -545,14 +548,14 @@ def main():
         "\n*** Done FieldList calculations for GC distance. Have total of "
         f"{len(cc_distance_example_fl)} fields in result."
     )
-    for f in cc_distance_example_fl:
+    for field in cc_distance_example_fl:
         # As a basic test, only one point (coresponding to the r0_nvector grid
         # point) should have a 0.0 distance since it will be a coincident point
-        f_data = f.data.array
+        f_data = field.data.array
         assert (np.count_nonzero(f_data) + 1 == f_data.size)
         print(
-            f"\nOutput gc distance field with name '{f.long_name}' "
-            f"has data of {f.data}."
+            f"\nOutput gc distance field with name '{field.long_name}' "
+            f"has data of {field.data}."
         )
 
     cf.write(cc_distance_example_fl, "test_outputs/out_gc_distance.nc")
@@ -562,6 +565,7 @@ def main():
     ###get_azimuth_angles_fieldlist(
     ###    upper_hemi_lats_field, grid_nvectors, ll_ref)
     print("Starting FieldList calculations for azimuth angle.")
+
     cc_distance_example_fl = get_azimuth_angles_fieldlist(
         origin_nvectors, origin_ll_ref, grid_nvectors_field, f)
     print(
