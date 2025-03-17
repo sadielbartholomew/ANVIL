@@ -76,7 +76,7 @@ def get_u_field(path=None):
 
     # Regular lat-lon grid test cases. In order of low -> high resolution.
     # Test case 1: lat x lon of 5 x 8
-    ###f = cf.example_field(0)
+    f = cf.example_field(0)
     # SLB timings 12/03/25: Time taken (in s) for 'main' to run: 1.1899
 
     # Test case 2: lat x lon of 30 x 48
@@ -88,7 +88,7 @@ def get_u_field(path=None):
     # SLB timings 12/03/25: ???
 
     # Test case 4: lat x lon of 160 x 320
-    f = cf.read("test_data/160by320griddata.nc")[0].squeeze()
+    ###f = cf.read("test_data/160by320griddata.nc")[0].squeeze()
     # SLB timings 12/03/25: ???
     # _____ Time taken (in s) for
     # 'perform_nvector_field_iteration' to run: 180.7028 _____
@@ -104,6 +104,14 @@ def get_u_field(path=None):
     print("Data using to process grid is:")
     f.dump()
     return f
+
+
+def clear_selected_properties(field):
+    """TODO."""
+    remove_props = ["valid_max", "valid_min", "standard_name", "long_name"]
+    for prop in remove_props:
+        if field.has_property(prop):
+            field.del_property(prop)
 
 
 def get_nvector(lat, lon):
@@ -125,6 +133,7 @@ def get_nvectors_across_grid(field):
 
     nv_data_size = (3, lats_len, lons_len)
     output_data_array = np.zeros(nv_data_size)  # 3 for 3 comps to an n-vector
+    # TODO consolidate array operations to remove need for 'for' loop
     for lat_i, lat in enumerate(lats):
         for lon_i, lon in enumerate(lons):
             # For a quick check
@@ -141,8 +150,7 @@ def get_nvectors_across_grid(field):
     # Need to remove any restrictions on data e.g. valid min and valid max
     # which could prevent the GC distance and angles data being written without
     # masking out
-    output_field.del_property("valid_max")
-    output_field.del_property("valid_min")
+    clear_selected_properties(output_field)
 
     # Need to create a new domain axis of size three to hold the n-vector
     # components
@@ -312,13 +320,12 @@ def get_azimuth_angle_between(
 @timeit
 def perform_nvector_field_iteration(
         r0_i, r0_nvector, result_data_size, lats, lons,
-        operation, long_name_start, origin_nvectors, origin_ll_ref,
-        grid_nvectors_field, grid_nvectors_field_flattened,
+        operation, long_name_start, units_string, origin_nvectors,
+        origin_ll_ref, grid_nvectors_field, grid_nvectors_field_flattened,
 ):
     """TODO."""
     output_field_for_r0 = grid_nvectors_field_flattened.copy()
-    output_field_for_r0.del_property("valid_max")
-    output_field_for_r0.del_property("valid_min")
+    clear_selected_properties(output_field_for_r0)
 
     print("Output field metadata will be", output_field_for_r0)
 
@@ -367,18 +374,19 @@ def perform_nvector_field_iteration(
     pprint(output_field_for_r0.data.array)
 
     # Label the field by name so we know which lat-lon the origin r_nvector
-    # is for
+    # is for. Remove any original standard name first.
     r0_lat, r0_lon = origin_ll_ref[r0_i]
     output_field_for_r0.long_name = (
         f"{long_name_start}_from_point_at_lat_{r0_lat}_lon_{r0_lon}"
     )
     print("Name is", output_field_for_r0.long_name)
+    output_field_for_r0.override_units(units_string, inplace=True)
 
     return output_field_for_r0
 
 
 def perform_operation_with_nvectors_on_origin_fl(
-        operation, long_name_start, origin_nvectors, origin_ll_ref,
+        operation, long_name_start, units, origin_nvectors, origin_ll_ref,
         grid_nvectors_field, grid_nvectors_field_flattened,
 ):
     """TODO."""
@@ -394,7 +402,7 @@ def perform_operation_with_nvectors_on_origin_fl(
     for r0_i, r0_nvector in enumerate(origin_nvectors):
         output_field_for_r0 = perform_nvector_field_iteration(
             r0_i, r0_nvector, result_data_size, lats, lons,
-            operation, long_name_start, origin_nvectors, origin_ll_ref,
+            operation, long_name_start, units, origin_nvectors, origin_ll_ref,
             grid_nvectors_field, grid_nvectors_field_flattened,
         )
 
@@ -409,7 +417,7 @@ def get_gc_distance_fieldlist(
 ):
     """TODO."""
     return perform_operation_with_nvectors_on_origin_fl(
-        get_great_circle_distance, "great_circle_distance",
+        get_great_circle_distance, "great_circle_distance", "m",
         origin_nvectors, origin_ll_ref,
         grid_nvectors_field, grid_nvectors_field_flattened,
     )
@@ -421,7 +429,7 @@ def get_azimuth_angles_fieldlist(
 ):
     """TODO."""
     return perform_operation_with_nvectors_on_origin_fl(
-        get_azimuth_angle_between, "azimuth_angle",
+        get_azimuth_angle_between, "azimuth_angle", "degree",
         origin_nvectors, origin_ll_ref,
         grid_nvectors_field, grid_nvectors_field_flattened,
     )
