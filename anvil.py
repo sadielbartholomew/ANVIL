@@ -435,6 +435,49 @@ def get_azimuth_angles_fieldlist(
     )
 
 
+def validate_gc_distance_fl(
+        origin_nvectors, origin_ll_ref, grid_nvectors_field, f
+):
+    """TODO."""
+    print("Starting FieldList calculations for GC distance.")
+    gc_distance_fl = get_gc_distance_fieldlist(
+        origin_nvectors, origin_ll_ref, grid_nvectors_field, f)
+    print(
+        "\n*** Done FieldList calculations for GC distance. Have total of "
+        f"{len(gc_distance_fl)} fields in result."
+    )
+    for field in gc_distance_fl:
+        # As a basic test, only one point (coresponding to the r0_nvector grid
+        # point) should have a 0.0 distance since it will be a coincident point
+        f_data = field.data.array
+        assert (np.count_nonzero(f_data) + 1 == f_data.size)
+        print(
+            f"\nOutput gc distance field with name '{field.long_name}' "
+            f"has data of {field.data}."
+        )
+
+    return gc_distance_fl
+
+
+def validate_azimuth_angles_fl(
+        origin_nvectors, origin_ll_ref, grid_nvectors_field, f):
+    """TODO."""
+    print("Starting FieldList calculations for azimuth angle.")
+
+    azimuth_angles_fl = get_azimuth_angles_fieldlist(
+        origin_nvectors, origin_ll_ref, grid_nvectors_field, f)
+    print(
+        "\n*** Done FieldList calculations for azimuth angle. Have total of "
+        f"{len(azimuth_angles_fl)} fields in result."
+    )
+    for f in azimuth_angles_fl:
+        print(
+            f"\nOutput azimuth angle field with name '{f.long_name}' "
+            f"has data of {f.data}."
+        )
+    return azimuth_angles_fl
+
+
 # ----------------------------------------------------------------------------
 # Basic testing, to be pulled out & consol'd into testing module eventually
 # ----------------------------------------------------------------------------
@@ -557,45 +600,16 @@ def main():
     # points in (B), we end up with 10 fields of 20*40=800 values each for the
     # GC distances and a further 10 fields of 800 vaues each for the azimuth
     # angles.
-    # 9. Get fields with GC distances
-    print("Starting FieldList calculations for GC distance.")
-    cc_distance_example_fl = get_gc_distance_fieldlist(
-        origin_nvectors, origin_ll_ref, grid_nvectors_field, f)
-    print(
-        "\n*** Done FieldList calculations for GC distance. Have total of "
-        f"{len(cc_distance_example_fl)} fields in result."
-    )
-    for field in cc_distance_example_fl:
-        # As a basic test, only one point (coresponding to the r0_nvector grid
-        # point) should have a 0.0 distance since it will be a coincident point
-        f_data = field.data.array
-        assert (np.count_nonzero(f_data) + 1 == f_data.size)
-        print(
-            f"\nOutput gc distance field with name '{field.long_name}' "
-            f"has data of {field.data}."
-        )
 
-    cf.write(cc_distance_example_fl, "test_outputs/out_gc_distance.nc")
+    # 9. Get fields with GC distances
+    gc_distance_fl = validate_gc_distance_fl(
+        origin_nvectors, origin_ll_ref, grid_nvectors_field, f)
+    cf.write(gc_distance_fl, "test_outputs/out_gc_distance.nc")
 
     # 10. Get fields with bearings (azimuth angles)
-    #     TODO once have fast enough approach for the GC distance.
-    ###get_azimuth_angles_fieldlist(
-    ###    upper_hemi_lats_field, grid_nvectors, ll_ref)
-    print("Starting FieldList calculations for azimuth angle.")
-
-    cc_distance_example_fl = get_azimuth_angles_fieldlist(
+    azimuth_angles_fl = validate_azimuth_angles_fl(
         origin_nvectors, origin_ll_ref, grid_nvectors_field, f)
-    print(
-        "\n*** Done FieldList calculations for azimuth angle. Have total of "
-        f"{len(cc_distance_example_fl)} fields in result."
-    )
-    for f in cc_distance_example_fl:
-        print(
-            f"\nOutput azimuth angle field with name '{f.long_name}' "
-            f"has data of {f.data}."
-        )
-
-    cf.write(cc_distance_example_fl, "test_outputs/out_azimuth_angle.nc")
+    cf.write(azimuth_angles_fl, "test_outputs/out_azimuth_angle.nc")
 
 
 if __name__ == "__main__":
