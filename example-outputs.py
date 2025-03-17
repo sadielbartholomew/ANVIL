@@ -60,6 +60,29 @@ def mask_outside_annulus(
     return masked_field
 
 
+def plot_masking_examples(
+        gc_distances, distance_range_to_mask, plot_name_append, proj="cyl"):
+    """TODO."""
+    print("Plotting masking example for two different points")
+    result_1 = mask_outside_annulus(gc_distances[0], *distance_range_to_mask)
+    result_2 = mask_outside_annulus(
+        gc_distances[midway_field], *distance_range_to_mask)
+    cfp.gopen(file=f"masking_example_{plot_name_append}")
+    cfp.mapset(proj=proj)
+    cfp.con(
+        result_1, lines=False, colorbar=None,
+    )
+    cfp.con(
+        result_2, lines=False,
+        title=(
+            "Example: masking of all points outside "
+            f"{distance_range_to_mask[0]} to {distance_range_to_mask[1]} m\n"
+            "for two different lat-lon origin points"
+        ),
+    )
+    cfp.gclose()
+
+
 if __name__ == "__main__":
     """TODO."""
     # Get ANVIL output fields
@@ -72,30 +95,6 @@ if __name__ == "__main__":
     plot_fields(gc_distances, azi_angles)
 
     # Illustrative plots
-    print("Masking example 1")
-    result_1 = mask_outside_annulus(gc_distances[0], 1.0e7, 1.1e7)
-    result_2 = mask_outside_annulus(gc_distances[midway_field], 1.0e7, 1.1e7)
-    cfp.gopen(file="masking_example")
-    cfp.mapset(proj="cyl")
-    cfp.con(
-        result_1, lines=False,
-    )
-    cfp.con(
-        result_2, lines=False,
-        title="Masked example with masking outside 1-1.1 x 10*7",
-    )
-    cfp.gclose()
+    plot_masking_examples(gc_distances, [1.0e7, 1.1e7], "1")
+    plot_masking_examples(gc_distances, [0.2e7, 0.3e7], "2", proj="npstere")
 
-    print("Masking example 2")
-    result_1 = mask_outside_annulus(gc_distances[0], 0.2e7, 0.3e7)
-    result_2 = mask_outside_annulus(gc_distances[midway_field], 0.2e7, 0.3e7)
-    cfp.gopen(file="masking_example_2")
-    cfp.mapset(proj="npstere")
-    cfp.con(
-        result_1, lines=False,
-    )
-    cfp.con(
-        result_2, lines=False,
-        title="Masking outside 0.2-0.3 x 10*7 in NP stereographic projection",
-    )
-    cfp.gclose()
