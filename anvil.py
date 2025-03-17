@@ -138,6 +138,12 @@ def get_nvectors_across_grid(field):
             output_data_array[:, lat_i, lon_i] = grid_nvector
 
     output_field = field.copy().squeeze()  # squeeze out time
+    # Need to remove any restrictions on data e.g. valid min and valid max
+    # which could prevent the GC distance and angles data being written without
+    # masking out
+    output_field.del_property("valid_max")
+    output_field.del_property("valid_min")
+
     # Need to create a new domain axis of size three to hold the n-vector
     # components
     # Using https://ncas-cms.github.io/cf-python/tutorial.html#id253 as guide
@@ -311,6 +317,9 @@ def perform_nvector_field_iteration(
 ):
     """TODO."""
     output_field_for_r0 = grid_nvectors_field_flattened.copy()
+    output_field_for_r0.del_property("valid_max")
+    output_field_for_r0.del_property("valid_min")
+
     print("Output field metadata will be", output_field_for_r0)
 
     # Replace the data in the field with the value of the distance to
