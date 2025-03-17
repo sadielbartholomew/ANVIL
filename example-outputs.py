@@ -75,8 +75,8 @@ def plot_masking_examples(
     cfp.con(
         result_2, lines=False,
         title=(
-            "Example: masking of all points outside "
-            f"{distance_range_to_mask[0]} to {distance_range_to_mask[1]} m\n"
+            "Example: masking of all points outside great circle distance\n"
+            f"{distance_range_to_mask[0]} to {distance_range_to_mask[1]} m "
             "for two different lat-lon origin points"
         ),
     )
