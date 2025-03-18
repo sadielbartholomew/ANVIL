@@ -76,7 +76,7 @@ def get_u_field(path=None):
 
     # Regular lat-lon grid test cases. In order of low -> high resolution.
     # Test case 1: lat x lon of 5 x 8
-    f = cf.example_field(0)
+    ###f = cf.example_field(0)
     # SLB timings 12/03/25: Time taken (in s) for 'main' to run: 1.1899
 
     # Test case 2: lat x lon of 30 x 48
@@ -88,7 +88,7 @@ def get_u_field(path=None):
     # SLB timings 12/03/25: ???
 
     # Test case 4: lat x lon of 160 x 320
-    ###f = cf.read("test_data/160by320griddata.nc")[0].squeeze()
+    f = cf.read("test_data/160by320griddata.nc")[0].squeeze()
     # SLB timings 12/03/25: ???
     # _____ Time taken (in s) for
     # 'perform_nvector_field_iteration' to run: 180.7028 _____
@@ -143,7 +143,7 @@ def get_nvectors_across_grid(field):
 
             # Squeeze to unpack from (3, 1) default shape to (3,) required
             grid_nvector = get_nvector(lat, lon).squeeze()
-            print("nvector is", grid_nvector, grid_nvector.shape)
+            ###print("nvector is", grid_nvector, grid_nvector.shape)
             output_data_array[:, lat_i, lon_i] = grid_nvector
 
     output_field = field.copy().squeeze()  # squeeze out time
@@ -496,6 +496,37 @@ def convert_degrees_to_radians(azimuth_angles_fl):
     print("Value after conversion:", azimuth_angles_fl[0].data[0, -1])
 
 
+def perform_intergration(
+    f, gc_distance_fl, upper_hemi_lats_field, azimuth_angles_fl, lats):
+    """TODO."""
+    # Set limits
+    earth_circ = 2 * np.pi * EARTH_RADIUS
+
+    min_r = 0
+    max_r = earth_circ * 0.75  # don't get too close to antipode, for now
+    # This represents the annulus width
+    # TODO make similar size as a mid-lat-like grid cell, for sensible calcs,
+    # i.e. determine this value from the inputs.
+    # For now a rough estimate is earht's circumference divided by lat points
+    # mult by 2
+    dr = earth_circ / (lats.size * 2)
+    print(f"dr intergral discretised increment value in metres is:", dr)
+
+    # *For an example point, first*
+    example_gridpoint = upper_hemi_lats_field[0, 0]
+    # Get limits for annuli to use
+    annuli_limits = np.arange(min_r, max_r, dr)
+    print("Annuli limits are", annuli_limits)
+    for annulus_lower, annulus_upper in pairwise(annuli_limits):
+        print("Pairwise annuli limits are:", annulus_lower, annulus_upper)
+
+        # Get points within the r + dr annulus limits
+        mask_outside_annulus(gc_distance_fl[0], annulus_lower, annulus_upper)
+        # Apply same mask to the u-field
+        # TODO
+
+    return
+
 # ----------------------------------------------------------------------------
 # Basic testing, to be pulled out & consol'd into testing module eventually
 # ----------------------------------------------------------------------------
@@ -650,18 +681,9 @@ def main():
     # TODO
 
     # 12. Perform the integration
-    # 12.a) Set limits
-    earth_circ = 2 * np.pi * EARTH_RADIUS
-    min_r = 0
-    max_r = earth_circ * 0.75  # don't get too close to antipode, for now
-    # This represents the annulus width
-    # TODO make similar size as a mid-lat-like grid cell, for sensible calcs,
-    # i.e. determine this value from the inputs.
-    # For now a rough estimate is earht's circumference divided by lat points
-    # mult by 2
-    print("LAT POINTS", lats.size, "units", lats.units)
-    dr = earth_circ / (lats.size * 2)
-    print(f"dr intergral discretised increment value in metres is:", dr)
+    result_field = perform_intergration(
+        f, gc_distance_fl, upper_hemi_lats_field, azimuth_angles_fl, lats)
+    print("TODO. Done!")
 
 
 if __name__ == "__main__":
