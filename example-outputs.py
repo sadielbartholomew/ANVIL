@@ -94,7 +94,6 @@ if __name__ == "__main__":
     # Plot the fields
     plot_fields(gc_distances, azi_angles)
 
-    # Illustrative plots
+    # Illustrative plots of masking
     plot_masking_examples(gc_distances, [1.0e7, 1.1e7], "1")
     plot_masking_examples(gc_distances, [0.2e7, 0.3e7], "2", proj="npstere")
-

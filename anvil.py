@@ -478,6 +478,15 @@ def validate_azimuth_angles_fl(
     return azimuth_angles_fl
 
 
+def mask_outside_annulus(
+        gc_distance_field, distance_lower_bound, distance_upper_bound):
+    """TODO."""
+    wo_query = cf.wo(distance_lower_bound, distance_upper_bound)
+    masked_field = gc_distance_field.where(wo_query, cf.masked)
+
+    return masked_field
+
+
 # ----------------------------------------------------------------------------
 # Basic testing, to be pulled out & consol'd into testing module eventually
 # ----------------------------------------------------------------------------
@@ -602,14 +611,47 @@ def main():
     # angles.
 
     # 9. Get fields with GC distances
-    gc_distance_fl = validate_gc_distance_fl(
-        origin_nvectors, origin_ll_ref, grid_nvectors_field, f)
-    cf.write(gc_distance_fl, "test_outputs/out_gc_distance.nc")
+    gc_file_name = "test_outputs/out_gc_distance.nc"
+    try:
+        # If already calculated
+        gc_distance_fl = cf.read(gc_file_name)
+    except:
+        gc_distance_fl = validate_gc_distance_fl(
+            origin_nvectors, origin_ll_ref, grid_nvectors_field, f)
+        cf.write(gc_distance_fl, gc_file_name)
 
     # 10. Get fields with bearings (azimuth angles)
-    azimuth_angles_fl = validate_azimuth_angles_fl(
-        origin_nvectors, origin_ll_ref, grid_nvectors_field, f)
-    cf.write(azimuth_angles_fl, "test_outputs/out_azimuth_angle.nc")
+    aa_file_name = "test_outputs/out_azimuth_angle.nc"
+    try:
+        # If already calculated
+        azimuth_angles_fl = cf.read(aa_file_name)
+    except:
+        azimuth_angles_fl = validate_azimuth_angles_fl(
+            origin_nvectors, origin_ll_ref, grid_nvectors_field, f)
+        cf.write(azimuth_angles_fl, aa_file_name)
+
+    # 11. Apply symmetries of grid to get GC distance and azi angles fields
+    #     for all grid points
+    # 11.a) Refelctive symmetry about equator to get lower hemisphere
+    # TODO
+    # 11.b) Rotational symmetry to get for all longitudes
+    # TODO
+
+    # 12. Perform the integration
+
+    # 12.a) Set limits
+    earth_circ = 2 * np.pi * EARTH_RADIUS
+    min_r = 0
+    max_r = earth_circ * 0.75  # don't get too close to antipode, for now
+    # This represents the annulus width
+    # TODO make similar size as a mid-lat-like grid cell, for sensible calcs,
+    # i.e. determine this value from the inputs.
+    # For now a rough estimate is earht's circumference divided by lat points
+    # mult by 2
+    print("LAT POINTS", lats.size, "units", lats.units)
+    dr = earth_circ / (lats.size * 2)
+    print(f"dr intergral discretised increment value in metres is:", dr)
+    # 12.b) Convert degrees to radians for 0 to 2*pi limits
 
 
 if __name__ == "__main__":
