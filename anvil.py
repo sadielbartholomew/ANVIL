@@ -76,7 +76,7 @@ def get_u_field(path=None):
 
     # Regular lat-lon grid test cases. In order of low -> high resolution.
     # Test case 1: lat x lon of 5 x 8
-    ###f = cf.example_field(0)
+    f = cf.example_field(0)
     # SLB timings 12/03/25: Time taken (in s) for 'main' to run: 1.1899
 
     # Test case 2: lat x lon of 30 x 48
@@ -88,7 +88,7 @@ def get_u_field(path=None):
     # SLB timings 12/03/25: ???
 
     # Test case 4: lat x lon of 160 x 320
-    f = cf.read("test_data/160by320griddata.nc")[0].squeeze()
+    ###f = cf.read("test_data/160by320griddata.nc")[0].squeeze()
     # SLB timings 12/03/25: ???
     # _____ Time taken (in s) for
     # 'perform_nvector_field_iteration' to run: 180.7028 _____
@@ -114,6 +114,24 @@ def clear_selected_properties(field):
             field.del_property(prop)
 
 
+def set_reference_latlon_properties(field, ref_lat, ref_lon):
+    """TODO."""
+    ref_props = {
+        "reference_origin_latitude": ref_lat,
+        "reference_origin_longitude": ref_lon,
+    }
+    for prop_key, prop_value in ref_props.items():
+        field.set_property(prop_key, prop_value)
+
+
+def get_reference_latlon_properties(field):
+    """TODO."""
+    return (
+        field.get_property("reference_origin_latitude"),
+        field.get_property("reference_origin_longitude"),
+    )
+
+
 def get_nvector(lat, lon):
     """TODO."""
     # Note lat_lon2n_E expects radians so convert from degrees if those are
@@ -136,11 +154,6 @@ def get_nvectors_across_grid(field):
     # TODO consolidate array operations to remove need for 'for' loop
     for lat_i, lat in enumerate(lats):
         for lon_i, lon in enumerate(lons):
-            # For a quick check
-            if lat_i == 2 and lon_i == 2:  # test on arbitrary case
-                print(
-                    "All LL", lat_i, lat, lon_i, lon, field[lat_i, lon_i])
-
             # Squeeze to unpack from (3, 1) default shape to (3,) required
             grid_nvector = get_nvector(lat, lon).squeeze()
             ###print("nvector is", grid_nvector, grid_nvector.shape)
@@ -377,10 +390,15 @@ def perform_nvector_field_iteration(
     # is for. Remove any original standard name first.
     r0_lat, r0_lon = origin_ll_ref[r0_i]
     output_field_for_r0.long_name = (
-        f"{long_name_start}_from_point_at_lat_{r0_lat}_lon_{r0_lon}"
+        f"{long_name_start}_from_point_at_lat_"
+        f"{round(r0_lat, 2)}_lon_{round(r0_lon, 2)}"
     )
     print("Name is", output_field_for_r0.long_name)
     output_field_for_r0.override_units(units_string, inplace=True)
+
+    set_reference_latlon_properties(output_field_for_r0, r0_lat, r0_lon)
+    rlat, rlon = get_reference_latlon_properties(output_field_for_r0)
+    print("Registered reference oriign lat and lon of:", rlat, rlon)
 
     return output_field_for_r0
 
@@ -489,11 +507,11 @@ def mask_outside_annulus(
 
 def convert_degrees_to_radians(azimuth_angles_fl):
     """TODO."""
-    print("Value before conversion:", azimuth_angles_fl[0].data[0, -1])
+    ###print("Value before conversion:", azimuth_angles_fl[0].data[0, -1])
     # Intergration goes from 0 to 2*pi so requires radians
     for field in azimuth_angles_fl:
         field.units = "radian"
-    print("Value after conversion:", azimuth_angles_fl[0].data[0, -1])
+    ###print("Value after conversion:", azimuth_angles_fl[0].data[0, -1])
 
 
 def perform_intergration(
@@ -516,7 +534,6 @@ def perform_intergration(
     example_gridpoint = upper_hemi_lats_field[0, 0]
     # Get limits for annuli to use
     annuli_limits = np.arange(min_r, max_r, dr)
-    print("Annuli limits are", annuli_limits)
     for annulus_lower, annulus_upper in pairwise(annuli_limits):
         print("Pairwise annuli limits are:", annulus_lower, annulus_upper)
 
