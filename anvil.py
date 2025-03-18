@@ -101,8 +101,7 @@ def get_u_field(path=None):
     # To calculate one full azimuth angle field, takes ~7-12 seconds =>
     # expect 80 * 10 = 800 seconds = ~14 minutes for all the azimuth fields.
 
-    print("Data using to process grid is:")
-    f.dump()
+    print("Data using to process grid is:\n", f)
     return f
 
 
@@ -175,8 +174,8 @@ def get_nvectors_across_grid(field):
     dc.set_property("long_name", "nvector_components")
     nv_key = output_field.set_construct(dc, axes=nvector_component_axis)
 
-    print("out field", output_field)
-    output_field.dump()
+    print("*** Out field is:\n", output_field)
+    ###output_field.dump()
     # TODO re-set standard name.
     # Now set data array all at once, to avoid multiple setting operations
     output_field.set_data(
@@ -219,11 +218,11 @@ def get_nvectors_across_coord(
             if include_lat_lon_ref:
                 lat_lon_ref.append(coords)
 
-    print("n-vector list determined is:")
+    print("*** n-vector list determined is:")
     pprint(nvectors)
 
     if include_lat_lon_ref:
-        print("lat-lon ref. for n-vector list is:")
+        print("*** lat-lon ref. for n-vector list is:")
         pprint(lat_lon_ref)
         return nvectors, lat_lon_ref
     else:
@@ -280,7 +279,7 @@ def get_great_circle_distances(
             na, nb, radius=earth_radius_in_m)[0]
         gc_distances.append(s_AB)
 
-    print("gc_distances list is (units of metres):", gc_distances)
+    print("*** gc_distances list is (units of metres):", gc_distances)
     if not ec_comparison:
         return gc_distances
 
@@ -340,7 +339,7 @@ def perform_nvector_field_iteration(
     output_field_for_r0 = grid_nvectors_field_flattened.copy()
     clear_selected_properties(output_field_for_r0)
 
-    print("Output field metadata will be", output_field_for_r0)
+    print("*** Output field metadata will be", output_field_for_r0)
 
     # Replace the data in the field with the value of the distance to
     # the point on the grid.
@@ -393,7 +392,7 @@ def perform_nvector_field_iteration(
         f"{long_name_start}_from_point_at_lat_"
         f"{round(r0_lat, 2)}_lon_{round(r0_lon, 2)}"
     )
-    print("Name is", output_field_for_r0.long_name)
+    print("*** Name is:", output_field_for_r0.long_name)
     output_field_for_r0.override_units(units_string, inplace=True)
 
     set_reference_latlon_properties(output_field_for_r0, r0_lat, r0_lon)
@@ -408,7 +407,7 @@ def perform_operation_with_nvectors_on_origin_fl(
         grid_nvectors_field, grid_nvectors_field_flattened,
 ):
     """TODO."""
-    print("Origin LL ref is:", origin_ll_ref)
+    print("*** Origin LL ref is:", origin_ll_ref)
 
     # Process input grid_nvectors_field lats and lons ready to iterate over
     lats = grid_nvectors_field.coordinate("latitude").data.array
@@ -496,6 +495,30 @@ def validate_azimuth_angles_fl(
     return azimuth_angles_fl
 
 
+def map_fields_to_reference_latlon_points(fieldlist, lats_values):
+    """TODO."""
+    mapping = {}
+    for lat in lats_values:
+        print("lat is", lat)
+        f = fieldlist.select_by_property(reference_origin_latitude=lat)
+        mapping[lat] = f
+
+    print("Mapping of latitudes to fields is")
+    pprint(mapping)
+    return mapping
+
+
+def apply_reg_latlon_grid_reflective_symmetry(lats_to_fields_mapping):
+    """TODO."""
+    pass  # TODO
+
+
+def apply_reg_latlon_grid_rotational_symmetry(lats_to_fields_mapping):
+    """TODO."""
+    # TODO
+    return
+
+
 def mask_outside_annulus(
         gc_distance_field, distance_lower_bound, distance_upper_bound):
     """TODO."""
@@ -534,6 +557,11 @@ def perform_intergration(
     example_gridpoint = upper_hemi_lats_field[0, 0]
     # Get limits for annuli to use
     annuli_limits = np.arange(min_r, max_r, dr)
+    print(
+        f"Starting discretised intergation loop with increment {dr} and "
+        f"total steps of {len(annuli_limits) - 1}.\n"
+    )
+
     for annulus_lower, annulus_upper in pairwise(annuli_limits):
         print("Pairwise annuli limits are:", annulus_lower, annulus_upper)
 
@@ -541,6 +569,8 @@ def perform_intergration(
         mask_outside_annulus(gc_distance_fl[0], annulus_lower, annulus_upper)
         # Apply same mask to the u-field
         # TODO
+
+    print("Finished discretised intergation loop.")
 
     return
 
@@ -629,6 +659,8 @@ def main():
     # longitude for a given latitude.
     print("Processing latitudes")
     lats_key, lats = f.coordinate("latitude", item=True)
+    print("Lats values are", lats.data.array)
+
     # Subspacing to the upper hemisphere only
     kwargs = {lats_key: cf.ge(0)}  # greater than or equal to 0, i.e. equator
     upper_hemi_lats_field = f.subspace(**kwargs)
@@ -653,8 +685,11 @@ def main():
     # f field not upper hemi field since the latter was subspaced down but we
     # need to find the full, original lat-lon grid of n-vectors.
     grid_nvectors_field = get_nvectors_across_grid(f)
-    print(f"Full grid of n-vectors for field {f!r} is:")
-    grid_nvectors_field.dump()
+    print(
+        f"*** Full grid of n-vectors for field {f!r} is:\n",
+        grid_nvectors_field
+    )
+    ###grid_nvectors_field.dump()
 
     # 8. Use inputs of (A) the upper hemisphere lats field, from step 3, and
     # (B) the full lat-lon grid of n-vectors, from step 7. For each point in
@@ -675,7 +710,7 @@ def main():
     except:
         gc_distance_fl = validate_gc_distance_fl(
             origin_nvectors, origin_ll_ref, grid_nvectors_field, f)
-        cf.write(gc_distance_fl, gc_file_name)
+        #-# cf.write(gc_distance_fl, gc_file_name)
 
     # 10. Get fields with bearings (azimuth angles)
     aa_file_name = "test_outputs/out_azimuth_angle.nc"
@@ -685,21 +720,33 @@ def main():
     except:
         azimuth_angles_fl = validate_azimuth_angles_fl(
             origin_nvectors, origin_ll_ref, grid_nvectors_field, f)
-        cf.write(azimuth_angles_fl, aa_file_name)
+        #-# cf.write(azimuth_angles_fl, aa_file_name)
 
     # Convert degrees to radians for 0 to 2*pi limits
     convert_degrees_to_radians(azimuth_angles_fl)
 
     # 11. Apply symmetries of grid to get GC distance and azi angles fields
     #     for all grid points
-    # 11.a) Refelctive symmetry about equator to get lower hemisphere
+    gc_lats_to_fields_mapping = map_fields_to_reference_latlon_points(
+        gc_distance_fl, lats.data.array)
+    ###aa_lats_to_fields_mapping = map_fields_to_reference_latlon_points(
+    ###    azimuth_angles_fl, lats.data.array)
+    # The negative lat values will not yet have fields assigned. We need
+    # to use symmetries to find those fields from the existing ones.
+    # 11.a) Reflective symmetry about equator to get lower hemisphere
     # TODO
+    apply_reg_latlon_grid_reflective_symmetry(gc_lats_to_fields_mapping)
+    ###apply_reg_latlon_grid_reflective_symmetry(aa_lats_to_fields_mapping)
     # 11.b) Rotational symmetry to get for all longitudes
     # TODO
+    gc_latslons_to_fields_mapping = apply_reg_latlon_grid_rotational_symmetry(
+        gc_lats_to_fields_mapping)
+    ###aa_latslons_to_fields_mapping = apply_reg_latlon_grid_rotational_symmetry(
+    ###    aa_lats_to_fields_mapping)
 
     # 12. Perform the integration
-    result_field = perform_intergration(
-        f, gc_distance_fl, upper_hemi_lats_field, azimuth_angles_fl, lats)
+    #result_field = perform_intergration(
+    #    f, gc_distance_fl, upper_hemi_lats_field, azimuth_angles_fl, lats)
     print("TODO. Done!")
 
 
