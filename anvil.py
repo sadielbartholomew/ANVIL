@@ -487,6 +487,15 @@ def mask_outside_annulus(
     return masked_field
 
 
+def convert_degrees_to_radians(azimuth_angles_fl):
+    """TODO."""
+    print("Value before conversion:", azimuth_angles_fl[0].data[0, -1])
+    # Intergration goes from 0 to 2*pi so requires radians
+    for field in azimuth_angles_fl:
+        field.units = "radian"
+    print("Value after conversion:", azimuth_angles_fl[0].data[0, -1])
+
+
 # ----------------------------------------------------------------------------
 # Basic testing, to be pulled out & consol'd into testing module eventually
 # ----------------------------------------------------------------------------
@@ -630,6 +639,9 @@ def main():
             origin_nvectors, origin_ll_ref, grid_nvectors_field, f)
         cf.write(azimuth_angles_fl, aa_file_name)
 
+    # Convert degrees to radians for 0 to 2*pi limits
+    convert_degrees_to_radians(azimuth_angles_fl)
+
     # 11. Apply symmetries of grid to get GC distance and azi angles fields
     #     for all grid points
     # 11.a) Refelctive symmetry about equator to get lower hemisphere
@@ -638,7 +650,6 @@ def main():
     # TODO
 
     # 12. Perform the integration
-
     # 12.a) Set limits
     earth_circ = 2 * np.pi * EARTH_RADIUS
     min_r = 0
@@ -651,7 +662,6 @@ def main():
     print("LAT POINTS", lats.size, "units", lats.units)
     dr = earth_circ / (lats.size * 2)
     print(f"dr intergral discretised increment value in metres is:", dr)
-    # 12.b) Convert degrees to radians for 0 to 2*pi limits
 
 
 if __name__ == "__main__":
