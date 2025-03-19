@@ -610,7 +610,7 @@ def convert_degrees_to_radians(azimuth_angles_fl):
 def perform_intergration(
         u, lats, lons, gc_lats_to_fields_mapping, aa_lats_to_fields_mapping):
     """TODO."""
-    result_field = u.copy()
+    result_field = cf.FieldList()
 
     # Set limits
     earth_circ = 2 * np.pi * EARTH_RADIUS
@@ -638,7 +638,7 @@ def perform_intergration(
         aa_across_lons = apply_reg_latlon_grid_rotational_symmetry(
             aa_lat_origin_field, lons_data
         )
-
+        u_data = u.data.array
         for lon in lons_data:
             print("START calculating iterations for lon", lon)
             gc_final_latlon_field = gc_across_lons[str(lon)]
@@ -654,15 +654,51 @@ def perform_intergration(
                     "Pairwise annuli limits are:", annulus_lower, annulus_upper
                 )
                 # Get points within the r + dr annulus limits
-                masked_field = mask_outside_annulus(
-                    gc_final_latlon_field, annulus_lower, annulus_upper)
+
+                # Doesn't seem to work for some reason!
+                # Everything gets masked out!
+                """
+                # Apply masking to *u* field based on *gc distance* field
+                # condition.
+                u_masked_for_annulus = u.where(
+                    (gc_final_latlon_field < annulus_upper) |
+                    (gc_final_latlon_field >= annulus_lower),
+                    cf.masked
+                )
+                """
+
+                # TODO do we use open_lower and/or _upper for open intervals?
+                masked_gcd_field = mask_outside_annulus(
+                    gc_final_latlon_field, annulus_lower, annulus_upper
+                )
+                gcd_mask = masked_gcd_field.data.mask
+                u_masked_for_annulus = u.copy()
+                new_mask_data = np.ma.array(u_data, mask=gcd_mask)
+                u_masked_for_annulus.set_data(new_mask_data)
+
                 # Apply same mask to the u-field
-                print("MASKED RESULT", masked_field)
+                print("MASKED RESULT", u_masked_for_annulus)
+                nm_count = u_masked_for_annulus.count().data.array.item()
+                print(
+                    "Non-masked points count is:", nm_count
+                )
+
+                # Finally, we can perform the actual integral!
+                if nm_count > 0:
+                    result = u_masked_for_annulus.collapse(
+                        "area: integral", weights=aa_final_latlon_field,
+                        measure=True
+                    )
+                    print("RESULT IS", result, result.shape)
+                else:
+                    print("Warning: empty annulus!")
                 # TODO
+                ###result_field.append(result)
 
     print("Finished discretised intergation loop.")
-    # TODO set data onto result field and update metadata accordingly
+    # Try aggregating down the results to one field!
 
+    # TODO set data onto result field and update metadata accordingly
     return result_field
 
 # ----------------------------------------------------------------------------
