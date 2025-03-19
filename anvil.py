@@ -547,16 +547,45 @@ def apply_reg_latlon_grid_reflective_symmetry(
     return lats_to_fields_mapping
 
 
-def apply_reg_latlon_grid_rotational_symmetry(
-        lats_to_fields_mapping, lat):
+def apply_reg_latlon_grid_rotational_symmetry(original_field, lons):
     """TODO."""
     # TODO
+    lons_to_fields_mapping = {}
     # 1. Get the field for the corresponding latitude
-    f = lats_to_fields_mapping[lat][0]
-    lon = field.get_property("reference_origin_longitude")
-    print("LONGITUDE IS", lon)
+    lat, original_lon = get_reference_latlon_properties(original_field)
+    print("Longitudes are", lons)
+    for lon in lons:
+    # TODO float precision care, use cf.isclose?
+        if lon == original_lon:
+            lons_to_fields_mapping[str(lon)] = original_field
+        else:
+            # Need to roll to apply rotational symmetry of regular lat-lon grid
+            # to get the approproate field from the one at the same latitude
+            # but different longitude. Apply roll and edit metadata accordingly.
+            rolled_field = original_field.copy()
 
-    return  # lat_lon_appropriate_field
+            # Find by how many positions we need to shift by!
+            lat_difference_in_steps_0 = original_field.indices(
+                longitude=original_lon)[1].item()
+            lat_difference_in_steps_1 = original_field.indices(
+                longitude=lon)[1].item()
+            lat_difference_in_steps = (
+                lat_difference_in_steps_1 - lat_difference_in_steps_0
+            )
+            print(
+                "rotation index difference values are:",
+                lat_difference_in_steps
+            )
+
+            rolled_field.data.roll(
+                shift=lat_difference_in_steps, axis=1, inplace=True)
+            # TODO also update field name
+            rolled_field.set_property("reference_origin_longitude", lon)
+            lons_to_fields_mapping[str(lon)] = rolled_field
+
+    print("Mapping of longitudess to fields is (with post-rotation mapping):")
+    pprint(lons_to_fields_mapping)
+    return lons_to_fields_mapping
 
 
 def mask_outside_annulus(
@@ -697,9 +726,10 @@ def main():
     # hemisphere to get all the lower hemisphere equivalents and then use
     # rotational symmetry of the Earth to get the information for each
     # longitude for a given latitude.
-    print("Processing latitudes")
+    print("Processing latitudes (and longitudes for later)")
     lats_key, lats = f.coordinate("latitude", item=True)
     print("Lats values are", lats.data.array)
+    lons_key, lons = f.coordinate("longitude", item=True)
 
     # Subspacing to the upper hemisphere only
     kwargs = {lats_key: cf.ge(0)}  # greater than or equal to 0, i.e. equator
@@ -783,7 +813,19 @@ def main():
     # TODO
     # TODO ADD FLOAT PRECISION ROBUSTNESS
     example_lat = "39.81285"
-    example_lat_field = gc_lats_to_fields_mapping[example_lat]
+    example_lat_field = gc_lats_to_fields_mapping[example_lat][0]
+    example_across_lons = apply_reg_latlon_grid_rotational_symmetry(
+        example_lat_field, lons.data.array
+    )
+
+    print("*** Example lons rotation")
+    ###pprint(example_across_lons)
+    ex_f1 = example_across_lons["1.125"]
+    ex_f2 = example_across_lons["10.125"]
+    ex_f3 = example_across_lons["100.125"]
+    ex_f4 = example_across_lons["200.25"]
+    cf.write(cf.FieldList(
+        [ex_f1, ex_f2, ex_f3, ex_f4]), "gc_rotation_test_01.nc")
     ###gc_latslons_to_fields_mapping = apply_reg_latlon_grid_rotational_symmetry(
     ###    gc_lats_to_fields_mapping)
     ###aa_latslons_to_fields_mapping = apply_reg_latlon_grid_rotational_symmetry(
@@ -793,6 +835,7 @@ def main():
     #result_field = perform_intergration(
     #    f, gc_distance_fl, upper_hemi_lats_field, azimuth_angles_fl, lats)
     print("TODO. Done!")
+    """
     to_plot_reflection_test = cf.FieldList()
     test_lat_val = "75.699844"
     to_plot_reflection_test.extend(
@@ -804,6 +847,7 @@ def main():
         ]
     )
     cf.write(to_plot_reflection_test, "all_reflection_test_01.nc")
+    """
 
 
 if __name__ == "__main__":
