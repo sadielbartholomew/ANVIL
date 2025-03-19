@@ -606,12 +606,14 @@ def convert_degrees_to_radians(azimuth_angles_fl):
     ###print("Value after conversion:", azimuth_angles_fl[0].data[0, -1])
 
 
+@timeit
 def perform_intergration(
-    f, gc_distance_fl, upper_hemi_lats_field, azimuth_angles_fl, lats):
+        u, lats, lons, gc_lats_to_fields_mapping, aa_lats_to_fields_mapping):
     """TODO."""
+    result_field = u.copy()
+
     # Set limits
     earth_circ = 2 * np.pi * EARTH_RADIUS
-
     min_r = 0
     max_r = earth_circ * 0.75  # don't get too close to antipode, for now
     # This represents the annulus width
@@ -622,26 +624,46 @@ def perform_intergration(
     dr = earth_circ / (lats.size * 2)
     print(f"dr intergral discretised increment value in metres is:", dr)
 
-    # *For an example point, first*
-    example_gridpoint = upper_hemi_lats_field[0, 0]
     # Get limits for annuli to use
+    lons_data = lons.data.array
+    lats_data = lats.data.array
     annuli_limits = np.arange(min_r, max_r, dr)
-    print(
-        f"Starting discretised intergation loop with increment {dr} and "
-        f"total steps of {len(annuli_limits) - 1}.\n"
-    )
+    for lat in lats_data:
+        print("START calculating iterations for lat", lat)
+        gc_lat_origin_field = gc_lats_to_fields_mapping[str(lat)][0]
+        aa_lat_origin_field = aa_lats_to_fields_mapping[str(lat)][0]
+        gc_across_lons = apply_reg_latlon_grid_rotational_symmetry(
+            gc_lat_origin_field, lons_data
+        )
+        aa_across_lons = apply_reg_latlon_grid_rotational_symmetry(
+            aa_lat_origin_field, lons_data
+        )
 
-    for annulus_lower, annulus_upper in pairwise(annuli_limits):
-        print("Pairwise annuli limits are:", annulus_lower, annulus_upper)
+        for lon in lons_data:
+            print("START calculating iterations for lon", lon)
+            gc_final_latlon_field = gc_across_lons[str(lon)]
+            aa_final_latlon_field = aa_across_lons[str(lon)]
+            print(
+                "Starting discretised intergation loop with increment "
+                f"{dr} and total steps of {len(annuli_limits) - 1}.\n"
+            )
 
-        # Get points within the r + dr annulus limits
-        mask_outside_annulus(gc_distance_fl[0], annulus_lower, annulus_upper)
-        # Apply same mask to the u-field
-        # TODO
+            print("START annuli calclulations for", lon, lat)
+            for annulus_lower, annulus_upper in pairwise(annuli_limits):
+                print(
+                    "Pairwise annuli limits are:", annulus_lower, annulus_upper
+                )
+                # Get points within the r + dr annulus limits
+                masked_field = mask_outside_annulus(
+                    gc_final_latlon_field, annulus_lower, annulus_upper)
+                # Apply same mask to the u-field
+                print("MASKED RESULT", masked_field)
+                # TODO
 
     print("Finished discretised intergation loop.")
+    # TODO set data onto result field and update metadata accordingly
 
-    return
+    return result_field
 
 # ----------------------------------------------------------------------------
 # Basic testing, to be pulled out & consol'd into testing module eventually
@@ -842,11 +864,8 @@ def main():
         gc_lats_to_fields_mapping, empty)
     apply_reg_latlon_grid_reflective_symmetry(
         aa_lats_to_fields_mapping, empty)
-
-    # 11.b) Rotational symmetry to get for all longitudes
-    # TODO ADD FLOAT PRECISION ROBUSTNESS
-    # TODO
-
+    # 11.b) Rotational symmetry is applied during the integration loop
+    # for efficiency. But do some basic testing here on it for validation.
     print(
         "*** Writing out files or basic symmetries testing in "
         "separate script"
@@ -858,14 +877,9 @@ def main():
     reg_latlon_rotation_testing(
         gc_lats_to_fields_mapping, lons, example_lat="39.81285")
 
-    ###gc_latslons_to_fields_mapping = apply_reg_latlon_grid_rotational_symmetry(
-    ###    gc_lats_to_fields_mapping)
-    ###aa_latslons_to_fields_mapping = apply_reg_latlon_grid_rotational_symmetry(
-    ###    aa_lats_to_fields_mapping)
-
     # 12. Perform the integration
     result_field = perform_intergration(
-        f, gc_distance_fl, upper_hemi_lats_field, azimuth_angles_fl, lats)
+        f, lats, lons, gc_lats_to_fields_mapping, aa_lats_to_fields_mapping)
     print("All done!")
 
 
