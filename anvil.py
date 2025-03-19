@@ -498,25 +498,52 @@ def validate_azimuth_angles_fl(
 def map_fields_to_reference_latlon_points(fieldlist, lats_values):
     """TODO."""
     mapping = {}
+    lats_with_no_field_set = []
     for lat in lats_values:
         print("lat is", lat)
         f = fieldlist.select_by_property(reference_origin_latitude=lat)
+        if not f:
+            lats_with_no_field_set.append(lat)
         mapping[lat] = f
 
-    print("Mapping of latitudes to fields is")
+        # Convert to array for efficiency now know size (TODO strcitly already
+        # know size to expect so refactor to account for this.
+    lats_with_no_field_set = np.array(lats_with_no_field_set)
+
+    print("Mapping of latitudes to fields is (with first mapping):")
     pprint(mapping)
-    return mapping
+    return mapping, lats_with_no_field_set
 
 
-def apply_reg_latlon_grid_reflective_symmetry(lats_to_fields_mapping):
+def apply_reg_latlon_grid_reflective_symmetry(
+        lats_to_fields_mapping, empty_lats):
     """TODO."""
-    pass  # TODO
+    # Note these should be the lower hemisphere values!
+    print("Latitude values to acquire fields for are:", empty_lats)
+
+    for lat in empty_lats:
+        print("Pos value is", abs(lat))
+        positive_equivalent_field = lats_to_fields_mapping[abs(lat)][0]
+
+        # Perform reflection on the positive equivalnt i.e. upper hemisphere
+        # field - and rename and label properties appropriately
+        flipped_field = positive_equivalent_field.copy()
+        flipped_field.data.flip(0, inplace=True)
+        # TODO also update field name
+        flipped_field.set_property("reference_origin_latitude", lat)
+
+        print("Flipped field data is", flipped_field.data.array)
+        lats_to_fields_mapping[lat] = flipped_field
+
+    print("Mapping of latitudes to fields is (with post-reflection mapping):")
+    pprint(lats_to_fields_mapping)
+    return lats_to_fields_mapping
 
 
 def apply_reg_latlon_grid_rotational_symmetry(lats_to_fields_mapping):
     """TODO."""
     # TODO
-    return
+    return lats_to_fields_mapping
 
 
 def mask_outside_annulus(
@@ -727,7 +754,7 @@ def main():
 
     # 11. Apply symmetries of grid to get GC distance and azi angles fields
     #     for all grid points
-    gc_lats_to_fields_mapping = map_fields_to_reference_latlon_points(
+    gc_lats_to_fields_mapping, empty = map_fields_to_reference_latlon_points(
         gc_distance_fl, lats.data.array)
     ###aa_lats_to_fields_mapping = map_fields_to_reference_latlon_points(
     ###    azimuth_angles_fl, lats.data.array)
@@ -735,7 +762,8 @@ def main():
     # to use symmetries to find those fields from the existing ones.
     # 11.a) Reflective symmetry about equator to get lower hemisphere
     # TODO
-    apply_reg_latlon_grid_reflective_symmetry(gc_lats_to_fields_mapping)
+    apply_reg_latlon_grid_reflective_symmetry(
+        gc_lats_to_fields_mapping, empty)
     ###apply_reg_latlon_grid_reflective_symmetry(aa_lats_to_fields_mapping)
     # 11.b) Rotational symmetry to get for all longitudes
     # TODO
@@ -748,6 +776,14 @@ def main():
     #result_field = perform_intergration(
     #    f, gc_distance_fl, upper_hemi_lats_field, azimuth_angles_fl, lats)
     print("TODO. Done!")
+    to_plot_reflection_test = cf.FieldList()
+    to_plot_reflection_test.extend(
+        [
+            gc_latslons_to_fields_mapping[45.0],
+            gc_latslons_to_fields_mapping[-45.0],
+        ]
+    )
+    cf.write(to_plot_reflection_test, "gc_reflection_test_01.nc")
 
 
 if __name__ == "__main__":
