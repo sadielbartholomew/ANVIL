@@ -540,10 +540,11 @@ def apply_reg_latlon_grid_reflective_symmetry(
     return lats_to_fields_mapping
 
 
-def apply_reg_latlon_grid_rotational_symmetry(lats_to_fields_mapping):
+def apply_reg_latlon_grid_rotational_symmetry(
+        lats_to_fields_mapping, lat, lon):
     """TODO."""
     # TODO
-    return lats_to_fields_mapping
+    return  # lat_lon_appropriate_field
 
 
 def mask_outside_annulus(
@@ -756,19 +757,20 @@ def main():
     #     for all grid points
     gc_lats_to_fields_mapping, empty = map_fields_to_reference_latlon_points(
         gc_distance_fl, lats.data.array)
-    ###aa_lats_to_fields_mapping = map_fields_to_reference_latlon_points(
-    ###    azimuth_angles_fl, lats.data.array)
+    # Assume same empty as above - can consolidate this later.
+    aa_lats_to_fields_mapping, _ = map_fields_to_reference_latlon_points(
+        azimuth_angles_fl, lats.data.array)
     # The negative lat values will not yet have fields assigned. We need
     # to use symmetries to find those fields from the existing ones.
-    # 11.a) Reflective symmetry about equator to get lower hemisphere
-    # TODO
+    # 11.a) Reflective symmetry about equator to get lower hemisphere.
     apply_reg_latlon_grid_reflective_symmetry(
         gc_lats_to_fields_mapping, empty)
-    ###apply_reg_latlon_grid_reflective_symmetry(aa_lats_to_fields_mapping)
+    apply_reg_latlon_grid_reflective_symmetry(
+        aa_lats_to_fields_mapping, empty)
     # 11.b) Rotational symmetry to get for all longitudes
     # TODO
-    gc_latslons_to_fields_mapping = apply_reg_latlon_grid_rotational_symmetry(
-        gc_lats_to_fields_mapping)
+    ###gc_latslons_to_fields_mapping = apply_reg_latlon_grid_rotational_symmetry(
+    ###    gc_lats_to_fields_mapping)
     ###aa_latslons_to_fields_mapping = apply_reg_latlon_grid_rotational_symmetry(
     ###    aa_lats_to_fields_mapping)
 
@@ -779,11 +781,13 @@ def main():
     to_plot_reflection_test = cf.FieldList()
     to_plot_reflection_test.extend(
         [
-            gc_latslons_to_fields_mapping[45.0],
-            gc_latslons_to_fields_mapping[-45.0],
+            gc_lats_to_fields_mapping[45.0],
+            gc_lats_to_fields_mapping[-45.0],
+            aa_lats_to_fields_mapping[45.0],
+            aa_lats_to_fields_mapping[-45.0],
         ]
     )
-    cf.write(to_plot_reflection_test, "gc_reflection_test_01.nc")
+    cf.write(to_plot_reflection_test, "all_reflection_test_01.nc")
 
 
 if __name__ == "__main__":
