@@ -76,7 +76,7 @@ def get_u_field(path=None):
 
     # Regular lat-lon grid test cases. In order of low -> high resolution.
     # Test case 1: lat x lon of 5 x 8
-    f = cf.example_field(0)
+    ###f = cf.example_field(0)
     # SLB timings 12/03/25: Time taken (in s) for 'main' to run: 1.1899
 
     # Test case 2: lat x lon of 30 x 48
@@ -88,7 +88,7 @@ def get_u_field(path=None):
     # SLB timings 12/03/25: ???
 
     # Test case 4: lat x lon of 160 x 320
-    ###f = cf.read("test_data/160by320griddata.nc")[0].squeeze()
+    f = cf.read("test_data/160by320griddata.nc")[0].squeeze()
     # SLB timings 12/03/25: ???
     # _____ Time taken (in s) for
     # 'perform_nvector_field_iteration' to run: 180.7028 _____
@@ -503,12 +503,14 @@ def map_fields_to_reference_latlon_points(fieldlist, lats_values):
         print("lat is", lat)
         f = fieldlist.select_by_property(reference_origin_latitude=lat)
         if not f:
-            lats_with_no_field_set.append(lat)
-        mapping[lat] = f
+            lats_with_no_field_set.append(str(lat))
+        # String-value converted float is safer for float precision issues
+        # TODO is this a safe/good way?
+        mapping[str(lat)] = f
 
         # Convert to array for efficiency now know size (TODO strcitly already
         # know size to expect so refactor to account for this.
-    lats_with_no_field_set = np.array(lats_with_no_field_set)
+    ###lats_with_no_field_set = np.array(lats_with_no_field_set)
 
     print("Mapping of latitudes to fields is (with first mapping):")
     pprint(mapping)
@@ -522,8 +524,11 @@ def apply_reg_latlon_grid_reflective_symmetry(
     print("Latitude values to acquire fields for are:", empty_lats)
 
     for lat in empty_lats:
-        print("Pos value is", abs(lat))
-        positive_equivalent_field = lats_to_fields_mapping[abs(lat)][0]
+        ###print("Pos value is", abs(lat))
+        # String-value converted float is safer for float precision issues
+        # TODO is this a safe/good way?
+        neg_lat_key = lat.lstrip("-")
+        positive_equivalent_field = lats_to_fields_mapping[neg_lat_key][0]
 
         # Perform reflection on the positive equivalnt i.e. upper hemisphere
         # field - and rename and label properties appropriately
@@ -533,7 +538,9 @@ def apply_reg_latlon_grid_reflective_symmetry(
         flipped_field.set_property("reference_origin_latitude", lat)
 
         print("Flipped field data is", flipped_field.data.array)
-        lats_to_fields_mapping[lat] = flipped_field
+        # String-value converted float is safer for float precision issues
+        # TODO is this a safe/good way?
+        lats_to_fields_mapping[str(lat)] = flipped_field
 
     print("Mapping of latitudes to fields is (with post-reflection mapping):")
     pprint(lats_to_fields_mapping)
@@ -541,9 +548,14 @@ def apply_reg_latlon_grid_reflective_symmetry(
 
 
 def apply_reg_latlon_grid_rotational_symmetry(
-        lats_to_fields_mapping, lat, lon):
+        lats_to_fields_mapping, lat):
     """TODO."""
     # TODO
+    # 1. Get the field for the corresponding latitude
+    f = lats_to_fields_mapping[lat][0]
+    lon = field.get_property("reference_origin_longitude")
+    print("LONGITUDE IS", lon)
+
     return  # lat_lon_appropriate_field
 
 
@@ -738,7 +750,7 @@ def main():
     except:
         gc_distance_fl = validate_gc_distance_fl(
             origin_nvectors, origin_ll_ref, grid_nvectors_field, f)
-        #-# cf.write(gc_distance_fl, gc_file_name)
+        cf.write(gc_distance_fl, gc_file_name)
 
     # 10. Get fields with bearings (azimuth angles)
     aa_file_name = "test_outputs/out_azimuth_angle.nc"
@@ -748,7 +760,7 @@ def main():
     except:
         azimuth_angles_fl = validate_azimuth_angles_fl(
             origin_nvectors, origin_ll_ref, grid_nvectors_field, f)
-        #-# cf.write(azimuth_angles_fl, aa_file_name)
+        cf.write(azimuth_angles_fl, aa_file_name)
 
     # Convert degrees to radians for 0 to 2*pi limits
     convert_degrees_to_radians(azimuth_angles_fl)
@@ -769,6 +781,9 @@ def main():
         aa_lats_to_fields_mapping, empty)
     # 11.b) Rotational symmetry to get for all longitudes
     # TODO
+    # TODO ADD FLOAT PRECISION ROBUSTNESS
+    example_lat = "39.81285"
+    example_lat_field = gc_lats_to_fields_mapping[example_lat]
     ###gc_latslons_to_fields_mapping = apply_reg_latlon_grid_rotational_symmetry(
     ###    gc_lats_to_fields_mapping)
     ###aa_latslons_to_fields_mapping = apply_reg_latlon_grid_rotational_symmetry(
@@ -779,12 +794,13 @@ def main():
     #    f, gc_distance_fl, upper_hemi_lats_field, azimuth_angles_fl, lats)
     print("TODO. Done!")
     to_plot_reflection_test = cf.FieldList()
+    test_lat_val = "75.699844"
     to_plot_reflection_test.extend(
         [
-            gc_lats_to_fields_mapping[45.0],
-            gc_lats_to_fields_mapping[-45.0],
-            aa_lats_to_fields_mapping[45.0],
-            aa_lats_to_fields_mapping[-45.0],
+            gc_lats_to_fields_mapping[test_lat_val],
+            gc_lats_to_fields_mapping[f"-{test_lat_val}"],
+            aa_lats_to_fields_mapping[test_lat_val],
+            aa_lats_to_fields_mapping[f"-{test_lat_val}"],
         ]
     )
     cf.write(to_plot_reflection_test, "all_reflection_test_01.nc")
