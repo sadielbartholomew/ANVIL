@@ -647,7 +647,6 @@ def perform_intergration(
 # Basic testing, to be pulled out & consol'd into testing module eventually
 # ----------------------------------------------------------------------------
 
-@timeit
 def basic_gc_distance_testing(nvectors, ll_ref=None):
     """TODO."""
     nvector_respective_distances = []
@@ -699,6 +698,40 @@ def basic_azimuth_angle_testing(field):
         nvectors[0], nvectors[1]) == 90.0
     assert get_azimuth_angle_between(nvectors[1], nvectors[2]) == 90.0
     # etc., but no need to test on more for a basic check/validation
+
+
+def reg_latlon_reflection_testing(
+        gc_lats_to_fields_mapping, aa_lats_to_fields_mapping, test_lat_val):
+    """TODO."""
+    to_plot_reflection_test = cf.FieldList(
+        [
+            gc_lats_to_fields_mapping[test_lat_val],
+            gc_lats_to_fields_mapping[f"-{test_lat_val}"],
+            aa_lats_to_fields_mapping[test_lat_val],
+            aa_lats_to_fields_mapping[f"-{test_lat_val}"],
+        ]
+    )
+    cf.write(to_plot_reflection_test, "all_reflection_test_01.nc")
+    # NOTE, for now testing happens in 'test_symmetry_processing.py'
+    # script which reads in file written out above, for separation
+    # of concerns.
+
+
+def reg_latlon_rotation_testing(gc_lats_to_fields_mapping, lons, example_lat):
+    """TODO."""
+    example_lat_field = gc_lats_to_fields_mapping[example_lat][0]
+    example_across_lons = apply_reg_latlon_grid_rotational_symmetry(
+        example_lat_field, lons.data.array
+    )
+    ex_f1 = example_across_lons["1.125"]
+    ex_f2 = example_across_lons["10.125"]
+    ex_f3 = example_across_lons["100.125"]
+    ex_f4 = example_across_lons["200.25"]
+    cf.write(cf.FieldList(
+        [ex_f1, ex_f2, ex_f3, ex_f4]), "gc_rotation_test_01.nc")
+    # NOTE, for now testing happens in 'test_symmetry_processing.py'
+    # script which reads in file written out above, for separation
+    # of concerns.
 
 
 # ----------------------------------------------------------------------------
@@ -809,45 +842,31 @@ def main():
         gc_lats_to_fields_mapping, empty)
     apply_reg_latlon_grid_reflective_symmetry(
         aa_lats_to_fields_mapping, empty)
-    # 11.b) Rotational symmetry to get for all longitudes
-    # TODO
-    # TODO ADD FLOAT PRECISION ROBUSTNESS
-    example_lat = "39.81285"
-    example_lat_field = gc_lats_to_fields_mapping[example_lat][0]
-    example_across_lons = apply_reg_latlon_grid_rotational_symmetry(
-        example_lat_field, lons.data.array
-    )
 
-    print("*** Example lons rotation")
-    ###pprint(example_across_lons)
-    ex_f1 = example_across_lons["1.125"]
-    ex_f2 = example_across_lons["10.125"]
-    ex_f3 = example_across_lons["100.125"]
-    ex_f4 = example_across_lons["200.25"]
-    cf.write(cf.FieldList(
-        [ex_f1, ex_f2, ex_f3, ex_f4]), "gc_rotation_test_01.nc")
+    # 11.b) Rotational symmetry to get for all longitudes
+    # TODO ADD FLOAT PRECISION ROBUSTNESS
+    # TODO
+
+    print(
+        "*** Writing out files or basic symmetries testing in "
+        "separate script"
+    )
+    reg_latlon_reflection_testing(
+        gc_lats_to_fields_mapping, aa_lats_to_fields_mapping,
+        test_lat_val="75.699844"
+    )
+    reg_latlon_rotation_testing(
+        gc_lats_to_fields_mapping, lons, example_lat="39.81285")
+
     ###gc_latslons_to_fields_mapping = apply_reg_latlon_grid_rotational_symmetry(
     ###    gc_lats_to_fields_mapping)
     ###aa_latslons_to_fields_mapping = apply_reg_latlon_grid_rotational_symmetry(
     ###    aa_lats_to_fields_mapping)
 
     # 12. Perform the integration
-    #result_field = perform_intergration(
-    #    f, gc_distance_fl, upper_hemi_lats_field, azimuth_angles_fl, lats)
-    print("TODO. Done!")
-    """
-    to_plot_reflection_test = cf.FieldList()
-    test_lat_val = "75.699844"
-    to_plot_reflection_test.extend(
-        [
-            gc_lats_to_fields_mapping[test_lat_val],
-            gc_lats_to_fields_mapping[f"-{test_lat_val}"],
-            aa_lats_to_fields_mapping[test_lat_val],
-            aa_lats_to_fields_mapping[f"-{test_lat_val}"],
-        ]
-    )
-    cf.write(to_plot_reflection_test, "all_reflection_test_01.nc")
-    """
+    result_field = perform_intergration(
+        f, gc_distance_fl, upper_hemi_lats_field, azimuth_angles_fl, lats)
+    print("All done!")
 
 
 if __name__ == "__main__":
