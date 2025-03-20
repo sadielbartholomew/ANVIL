@@ -76,7 +76,7 @@ def get_u_field(path=None):
 
     # Regular lat-lon grid test cases. In order of low -> high resolution.
     # Test case 1: lat x lon of 5 x 8
-    ###f = cf.example_field(0)
+    f = cf.example_field(0)
     # SLB timings 12/03/25: Time taken (in s) for 'main' to run: 1.1899
 
     # Test case 2: lat x lon of 30 x 48
@@ -88,7 +88,7 @@ def get_u_field(path=None):
     # SLB timings 12/03/25: ???
 
     # Test case 4: lat x lon of 160 x 320
-    f = cf.read("test_data/160by320griddata.nc")[0].squeeze()
+    ###f = cf.read("test_data/160by320griddata.nc")[0].squeeze()
     # SLB timings 12/03/25: ???
     # _____ Time taken (in s) for
     # 'perform_nvector_field_iteration' to run: 180.7028 _____
@@ -540,7 +540,7 @@ def apply_reg_latlon_grid_reflective_symmetry(
         print("Flipped field data is", flipped_field.data.array)
         # String-value converted float is safer for float precision issues
         # TODO is this a safe/good way?
-        lats_to_fields_mapping[str(lat)] = flipped_field
+        lats_to_fields_mapping[str(lat)] = cf.FieldList(flipped_field)
 
     print("Mapping of latitudes to fields is (with post-reflection mapping):")
     pprint(lats_to_fields_mapping)
@@ -564,6 +564,8 @@ def apply_reg_latlon_grid_rotational_symmetry(original_field, lons):
             # but different longitude. Apply roll and edit metadata accordingly.
             rolled_field = original_field.copy()
 
+            # TODO this is slow and we can assume contiguous therefore
+            # increasing longitudes - so consolidate
             # Find by how many positions we need to shift by!
             lat_difference_in_steps_0 = original_field.indices(
                 longitude=original_lon)[1].item()
@@ -583,7 +585,7 @@ def apply_reg_latlon_grid_rotational_symmetry(original_field, lons):
             rolled_field.set_property("reference_origin_longitude", lon)
             lons_to_fields_mapping[str(lon)] = rolled_field
 
-    print("Mapping of longitudess to fields is (with post-rotation mapping):")
+    print("Mapping of longitudes to fields is (with post-rotation mapping):")
     pprint(lons_to_fields_mapping)
     return lons_to_fields_mapping
 
@@ -607,6 +609,78 @@ def convert_degrees_to_radians(azimuth_angles_fl):
 
 
 @timeit
+def annulus_calculation(
+        annulus_lower, annulus_upper, gc_final_latlon_field,
+        aa_final_latlon_field, u, u_data, u0
+):
+    """TODO."""
+    # Get points within the r + dr annulus limits
+
+    # --- #
+    # The below is more clean but doesn't seem to work for some reason!
+    # Everything gets masked out!
+    # Apply masking to *u* field based on *gc distance* field
+    # condition.
+    # u_masked_for_annulus = u.where(
+    #     ((gc_final_latlon_field < annulus_upper)) |
+    #     ((gc_final_latlon_field >= annulus_lower)),
+    #     cf.masked
+    # )
+    # --- #
+
+    # GET RESULT FOR THIS STEP
+    # TODO do we use open_lower and/or _upper for open intervals?
+    masked_gcd_field = mask_outside_annulus(
+        gc_final_latlon_field, annulus_lower, annulus_upper
+    )
+    gcd_mask = masked_gcd_field.data.mask
+    print(f"mask is {gcd_mask}")
+    u_masked_for_annulus = u.copy()
+    new_mask_data = np.ma.array(u_data, mask=gcd_mask)
+    u_masked_for_annulus.set_data(new_mask_data)
+
+    # Apply same mask to the u-field
+    ###print("MASKED RESULT", u_masked_for_annulus)
+    nm_count = u_masked_for_annulus.count().data.array.item()
+    print(
+        "Non-masked points count is:", nm_count
+    )
+
+    # du, velocity increment du(r) = du(r, x) = du(x + r) − u(x)
+    u1 = u_masked_for_annulus
+    velocity_increment = u1 - u0
+    # Can assume for the thinness of the annuli that the geometry
+    # is approximately flat and therefore can use the sum of
+    # squares for the squared norm value as per flat geometry
+    integrand = velocity_increment * velocity_increment.collapse(
+        "area: sum_of_squares"
+    )  # scalar as is a dot product.
+    # Finally, we can perform the actual integral!
+    if nm_count == 0:
+        print("Warning: empty annulus!")
+    elif nm_count < 4:
+        # TODO how to account for these cases?
+        print(
+            # By the pigeonhole principle!
+            "Warning: certainly less than one gridpoint "
+            "per quadrant. May not be reliable."
+        )
+
+    # Use this as example for now. Need to get weighting to
+    # work.
+    result = integrand.collapse(
+        "area: sum", ###weights=aa_final_latlon_field,
+        ###"area: integral", weights=aa_final_latlon_field,
+        ###measure=True
+    )
+    ###print("RESULT IS", result, result.shape, result.data)
+    result_value = result.data[0][0]
+    print("Result value is", result_value)
+
+    return result_value, u1
+
+
+@timeit
 def perform_intergration(
         u, lats, lons, gc_lats_to_fields_mapping, aa_lats_to_fields_mapping):
     """TODO."""
@@ -624,7 +698,7 @@ def perform_intergration(
     # i.e. determine this value from the inputs.
     # For now a rough estimate is earht's circumference divided by lat points
     # mult by 2
-    dr = earth_circ / (lats.size * 2)
+    dr = earth_circ / (lats.size * 2)  ###* 10 for quicker result to check
     print(f"dr intergral discretised increment value in metres is:", dr)
 
     # Get limits for annuli to use
@@ -633,6 +707,8 @@ def perform_intergration(
     annuli_limits = np.arange(min_r, max_r, dr)
     for lat_i, lat in enumerate(lats_data):
         print("START calculating iterations for lat", lat)
+        # 0 index to unpack from FieldList. TODO always store field only
+        # not singular FieldList.
         gc_lat_origin_field = gc_lats_to_fields_mapping[str(lat)][0]
         aa_lat_origin_field = aa_lats_to_fields_mapping[str(lat)][0]
         gc_across_lons = apply_reg_latlon_grid_rotational_symmetry(
@@ -641,94 +717,38 @@ def perform_intergration(
         aa_across_lons = apply_reg_latlon_grid_rotational_symmetry(
             aa_lat_origin_field, lons_data
         )
+
         u_data = u.data.array
         for lon_i, lon in enumerate(lons_data):
             print("START calculating iterations for lon", lon)
             gc_final_latlon_field = gc_across_lons[str(lon)]
             aa_final_latlon_field = aa_across_lons[str(lon)]
-            print(
-                "Starting discretised intergation loop with increment "
-                f"{dr} and total steps of {len(annuli_limits) - 1}.\n"
-            )
+            #print(
+            #    "Starting discretised intergation loop with increment "
+            #    f"{dr} and total steps of {len(annuli_limits) - 1}.\n"
+            #)
 
             print("START annuli calclulations for", lon, lat)
             u0 = u[lat_i, lon_i]  # exact value at gridpoint
             for annulus_lower, annulus_upper in pairwise(annuli_limits):
-                print(
-                    "Pairwise annuli limits are:", annulus_lower, annulus_upper
+                # print(
+                #     "Pairwise annuli limits are:", annulus_lower,
+                #     annulus_upper
+                # )
+                result_value, u1 = annulus_calculation(
+                    annulus_lower, annulus_upper, gc_final_latlon_field,
+                    aa_final_latlon_field, u, u_data, u0
                 )
-                # Get points within the r + dr annulus limits
-
-                # Doesn't seem to work for some reason!
-                # Everything gets masked out!
-                """
-                # Apply masking to *u* field based on *gc distance* field
-                # condition.
-                u_masked_for_annulus = u.where(
-                    (gc_final_latlon_field < annulus_upper) |
-                    (gc_final_latlon_field >= annulus_lower),
-                    cf.masked
-                )
-                """
-
-                # GET RESULT FOR THIS STEP
-                # TODO do we use open_lower and/or _upper for open intervals?
-                masked_gcd_field = mask_outside_annulus(
-                    gc_final_latlon_field, annulus_lower, annulus_upper
-                )
-                gcd_mask = masked_gcd_field.data.mask
-                u_masked_for_annulus = u.copy()
-                new_mask_data = np.ma.array(u_data, mask=gcd_mask)
-                u_masked_for_annulus.set_data(new_mask_data)
-
-                # Apply same mask to the u-field
-                print("MASKED RESULT", u_masked_for_annulus)
-                nm_count = u_masked_for_annulus.count().data.array.item()
-                print(
-                    "Non-masked points count is:", nm_count
-                )
-
-                # du, velocity increment du(r) = du(r, x) = du(x + r) − u(x)
-                u1 = u_masked_for_annulus.collapse("area: sum")
-                velocity_increment = u1 - u0
-                # Can assume for the thinness of the annuli that the geometry
-                # is approximately flat and therefore can use the sum of
-                # squares for the squared norm value as per flat geometry
-                integrand = velocity_increment * velocity_increment.collapse(
-                    "area: sum_of_squares"
-                )
-                # Finally, we can perform the actual integral!
-                if nm_count == 0:
-                    print("Warning: empty annulus!")
-                elif nm_count < 4:
-                    print(
-                        # TODO how to account for these cases?
-                        "Warning: certainly less than one gridpoint "
-                        "per quadrant. May not be reliable."
-                    )
-
-                # Use this as example for now. Need to get weighting to
-                # work.
-                result = integrand.collapse(
-                    "area: sum", ###weights=aa_final_latlon_field,
-                    ###"area: integral", weights=aa_final_latlon_field,
-                    ###measure=True
-                )
-                print(
-                    "RESULT IS", result, result.shape, result.data)
-                result_value = result.data[0][0]
-                print("Result value is", result_value)
-
-                u0 = u1  # prepare for next increment
-                # TODO
                 result_array[lat_i, lon_i] = result_value
-                ###result_field.append(result)
+                print("u1 is", u1)
+                u0 = u1   # prepare for next iteration
 
     print("Finished discretised intergation loop.")
 
     # Try aggregating down the results to one field!
     result_field.set_data(result_array)
-    dc.set_property("long_name", "dynamical_inter_scale_energy_transfer")
+    result_field.set_property(
+        "long_name", "dynamical_inter_scale_energy_transfer_pre_integral")
 
     # TODO set data onto result field and update metadata accordingly
     return result_field
@@ -807,16 +827,21 @@ def reg_latlon_reflection_testing(
     # of concerns.
 
 
-def reg_latlon_rotation_testing(gc_lats_to_fields_mapping, lons, example_lat):
+def reg_latlon_rotation_testing(
+        gc_lats_to_fields_mapping, lons, example_lat,
+        four_test_lon_values_to_plot
+):
     """TODO."""
     example_lat_field = gc_lats_to_fields_mapping[example_lat][0]
+    ###print("%%%%%b" * 20, example_lat_field)
     example_across_lons = apply_reg_latlon_grid_rotational_symmetry(
         example_lat_field, lons.data.array
     )
-    ex_f1 = example_across_lons["1.125"]
-    ex_f2 = example_across_lons["10.125"]
-    ex_f3 = example_across_lons["100.125"]
-    ex_f4 = example_across_lons["200.25"]
+    ###print("%%%%%a" * 20, example_across_lons)
+    ex_f1 = example_across_lons[four_test_lon_values_to_plot[0]]
+    ex_f2 = example_across_lons[four_test_lon_values_to_plot[1]]
+    ex_f3 = example_across_lons[four_test_lon_values_to_plot[2]]
+    ex_f4 = example_across_lons[four_test_lon_values_to_plot[3]]
     cf.write(cf.FieldList(
         [ex_f1, ex_f2, ex_f3, ex_f4]), "gc_rotation_test_01.nc")
     # NOTE, for now testing happens in 'test_symmetry_processing.py'
@@ -928,10 +953,12 @@ def main():
     # The negative lat values will not yet have fields assigned. We need
     # to use symmetries to find those fields from the existing ones.
     # 11.a) Reflective symmetry about equator to get lower hemisphere.
+    print("%%%%%b" * 20, gc_lats_to_fields_mapping)
     apply_reg_latlon_grid_reflective_symmetry(
         gc_lats_to_fields_mapping, empty)
     apply_reg_latlon_grid_reflective_symmetry(
         aa_lats_to_fields_mapping, empty)
+    print("%%%%%b" * 20, gc_lats_to_fields_mapping)
     # 11.b) Rotational symmetry is applied during the integration loop
     # for efficiency. But do some basic testing here on it for validation.
     print(
@@ -940,18 +967,23 @@ def main():
     )
     reg_latlon_reflection_testing(
         gc_lats_to_fields_mapping, aa_lats_to_fields_mapping,
-        test_lat_val="75.699844"
+        test_lat_val="45.0",  ###"75.699844"
     )
     reg_latlon_rotation_testing(
-        gc_lats_to_fields_mapping, lons, example_lat="39.81285")
+        gc_lats_to_fields_mapping, lons, example_lat="45.0",  ###"39.81285")
+        four_test_lon_values_to_plot=[
+            "22.5", "112.5", "247.5", "337.5"],
+            ###"1.125", "10.125", "100.125", "200.25"],
+    )
 
+    print("+++++++++++++++++ STARTING INTEGRATION +++++++++++++++++++++")
     # 12. Perform the integration
     result_field = perform_intergration(
         f, lats, lons, gc_lats_to_fields_mapping, aa_lats_to_fields_mapping)
     print("All done!")
     print("Result is:")
     result_field.dump()
-    cf.write(result_field, "final_result_field.nc")
+    cf.write(result_field, "test_outputs/final_result_field.nc")
 
 
 if __name__ == "__main__":
