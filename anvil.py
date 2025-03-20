@@ -610,7 +610,10 @@ def convert_degrees_to_radians(azimuth_angles_fl):
 def perform_intergration(
         u, lats, lons, gc_lats_to_fields_mapping, aa_lats_to_fields_mapping):
     """TODO."""
-    result_field = cf.FieldList()
+    # Initialise result field and data array to set on it
+    result_field = u.copy()
+    clear_selected_properties(result_field)
+    result_array = np.zeros(u.shape)
 
     # Set limits
     earth_circ = 2 * np.pi * EARTH_RADIUS
@@ -628,7 +631,7 @@ def perform_intergration(
     lons_data = lons.data.array
     lats_data = lats.data.array
     annuli_limits = np.arange(min_r, max_r, dr)
-    for lat in lats_data:
+    for lat_i, lat in enumerate(lats_data):
         print("START calculating iterations for lat", lat)
         gc_lat_origin_field = gc_lats_to_fields_mapping[str(lat)][0]
         aa_lat_origin_field = aa_lats_to_fields_mapping[str(lat)][0]
@@ -639,7 +642,7 @@ def perform_intergration(
             aa_lat_origin_field, lons_data
         )
         u_data = u.data.array
-        for lon in lons_data:
+        for lon_i, lon in enumerate(lons_data):
             print("START calculating iterations for lon", lon)
             gc_final_latlon_field = gc_across_lons[str(lon)]
             aa_final_latlon_field = aa_across_lons[str(lon)]
@@ -649,6 +652,7 @@ def perform_intergration(
             )
 
             print("START annuli calclulations for", lon, lat)
+            u0 = u[lat_i, lon_i]  # exact value at gridpoint
             for annulus_lower, annulus_upper in pairwise(annuli_limits):
                 print(
                     "Pairwise annuli limits are:", annulus_lower, annulus_upper
@@ -667,6 +671,7 @@ def perform_intergration(
                 )
                 """
 
+                # GET RESULT FOR THIS STEP
                 # TODO do we use open_lower and/or _upper for open intervals?
                 masked_gcd_field = mask_outside_annulus(
                     gc_final_latlon_field, annulus_lower, annulus_upper
@@ -683,20 +688,47 @@ def perform_intergration(
                     "Non-masked points count is:", nm_count
                 )
 
+                # du, velocity increment du(r) = du(r, x) = du(x + r) − u(x)
+                u1 = u_masked_for_annulus.collapse("area: sum")
+                velocity_increment = u1 - u0
+                # Can assume for the thinness of the annuli that the geometry
+                # is approximately flat and therefore can use the sum of
+                # squares for the squared norm value as per flat geometry
+                integrand = velocity_increment * velocity_increment.collapse(
+                    "area: sum_of_squares"
+                )
                 # Finally, we can perform the actual integral!
-                if nm_count > 0:
-                    result = u_masked_for_annulus.collapse(
-                        "area: integral", weights=aa_final_latlon_field,
-                        measure=True
-                    )
-                    print("RESULT IS", result, result.shape)
-                else:
+                if nm_count == 0:
                     print("Warning: empty annulus!")
+                elif nm_count < 4:
+                    print(
+                        # TODO how to account for these cases?
+                        "Warning: certainly less than one gridpoint "
+                        "per quadrant. May not be reliable."
+                    )
+
+                # Use this as example for now. Need to get weighting to
+                # work.
+                result = integrand.collapse(
+                    "area: sum", ###weights=aa_final_latlon_field,
+                    ###"area: integral", weights=aa_final_latlon_field,
+                    ###measure=True
+                )
+                print(
+                    "RESULT IS", result, result.shape, result.data)
+                result_value = result.data[0][0]
+                print("Result value is", result_value)
+
+                u0 = u1  # prepare for next increment
                 # TODO
+                result_array[lat_i, lon_i] = result_value
                 ###result_field.append(result)
 
     print("Finished discretised intergation loop.")
+
     # Try aggregating down the results to one field!
+    result_field.set_data(result_array)
+    dc.set_property("long_name", "dynamical_inter_scale_energy_transfer")
 
     # TODO set data onto result field and update metadata accordingly
     return result_field
@@ -917,6 +949,9 @@ def main():
     result_field = perform_intergration(
         f, lats, lons, gc_lats_to_fields_mapping, aa_lats_to_fields_mapping)
     print("All done!")
+    print("Result is:")
+    result_field.dump()
+    cf.write(result_field, "final_result_field.nc")
 
 
 if __name__ == "__main__":
