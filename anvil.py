@@ -86,7 +86,6 @@ def get_u_and_v_fields(path=None):
     u = u_p0_only.regrids(grid_field, method="linear")
     v = v_p0_only.regrids(grid_field, method="linear")
     print("u and v regridded fields are:", u, v)
-    f = u
     # Regular lat-lon grid test cases. In order of low -> high resolution.
 
     # Use example field for now, later read in from path
@@ -116,8 +115,8 @@ def get_u_and_v_fields(path=None):
     # To calculate one full azimuth angle field, takes ~7-12 seconds =>
     # expect 80 * 10 = 800 seconds = ~14 minutes for all the azimuth fields.
 
-    print("Data using to process grid is:\n", f)
-    return f
+    print("Data using to process grid is:\n", u)
+    return u, v
 
 
 def clear_selected_properties(field):
@@ -625,7 +624,7 @@ def convert_degrees_to_radians(azimuth_angles_fl):
 
 @timeit
 def annulus_calculation(
-        u, v, u_data, v_data, u0, v0,
+        u_data, v_data, u0, v0,
         annulus_lower, annulus_upper,
         gc_final_latlon_field, aa_final_latlon_field,
 ):
@@ -644,6 +643,8 @@ def annulus_calculation(
     # )
     # --- #
 
+    gc_final_latlon_data = gc_final_latlon_field.data  # .array needed?
+    aa_final_latlon_data = aa_final_latlon_field.data
     # GET RESULT FOR THIS STEP
     # TODO do we use open_lower and/or _upper for open intervals?
     masked_gcd_field = mask_outside_annulus(
@@ -653,15 +654,18 @@ def annulus_calculation(
     print(f"mask is {gcd_mask}")
 
     # Masking: apply mask from gc distances masking to the u-field
-    u_masked_for_annulus = u.copy()
-    u_new_mask_data = np.ma.array(u_data, mask=gcd_mask)
-    u_masked_for_annulus.set_data(u_new_mask_data)
-    v_masked_for_annulus = v.copy()
-    v_new_mask_data = np.ma.array(v_data, mask=gcd_mask)
-    v_masked_for_annulus.set_data(v_new_mask_data)
+    # Ignore below for now, is cf-field approach
+    ###u_masked_for_annulus = u_data.copy()
+    ###u_new_mask_data = np.ma.array(u_data, mask=gcd_mask)
+    ###u_masked_for_annulus.set_data(new_mask_data)
+    ###v_masked_for_annulus = v_data.copy()
+    ###v_new_mask_data = np.ma.array(v_data, mask=gcd_mask)
+    ###v_masked_for_annulus.set_data(v_new_mask_data)
+    u_masked_for_annulus = np.ma.array(u_data, mask=gcd_mask)
+    v_masked_for_annulus = np.ma.array(v_data, mask=gcd_mask)
 
     ###print("MASKED RESULT", u_masked_for_annulus)
-    nm_count = u_masked_for_annulus.count().data.array.item()
+    nm_count = u_masked_for_annulus.count()
     print(
         "Non-masked points count is:", nm_count
     )  # would be the same for u field
@@ -671,15 +675,22 @@ def annulus_calculation(
     v1 = v_masked_for_annulus
     u_velocity_increment = u1 - u0
     v_velocity_increment = v1 - v0
-    angle = aa_final_latlon_field
+    angles = aa_final_latlon_data
 
     # Find the integrand using vector calculations and the formula
     # Formula for unit vector r-hat from polar coordinates is:
     # r = (cos(theta), sin(theta))
-    r_unit_vector = aa_final_latlon_field.cos(), aa_final_latlon_field.sin()
-    dot_prod_result = np.dot(r_unit_vector, velocity_increment)
+    r_unit_vector = np.array((np.cos(angles), np.sin(angles)))
+    vector_velocity_increment = np.array(
+        u_velocity_increment, v_velocity_increment)
+    dot_product_result = np.dot(r_unit_vector, vector_velocity_increment)
     uv_vector_norm = u_velocity_increment**2 + v_velocity_increment**2
-    integrand = dot_prod_result * uv_vector_norm
+    print(
+        "SHAPES ARE", r_unit_vector.shape, vector_velocity_increment.shape,
+        dot_product_result.shape, uv_vector_norm.shape
+    )
+    integrand = dot_product_result * uv_vector_norm
+    print("INTEGRAND RESULT IS", integrand)
     # (Note is scalar as is the result of a dot product)
 
     # Finally, we can perform the actual integral!
@@ -696,7 +707,7 @@ def annulus_calculation(
     # Use this as example for now. Need to get weighting to
     # work.
     result = integrand.collapse(
-        "area: sum", ###weights=aa_final_latlon_field,
+        "area: mean", ###weights=aa_final_latlon_field,
         ###"area: integral", weights=aa_final_latlon_field,
         ###measure=True
     )
@@ -764,10 +775,13 @@ def perform_integration(
                 # print(
                 #     "Annuli limits are:", annulus_lower, annulus_upper
                 # )
+                # Do this all in data array space, for now - may be
+                # worthwhile later to go back to cf-field space
                 result_value, u1, v1 = annulus_calculation(
-                    u, v, u_data, v_data, u0, v0,
+                    u_data, v_data, u0, v0,
                     annulus_lower, annulus_upper,
-                    gc_final_latlon_field, aa_final_latlon_field,
+                    gc_final_latlon_field,
+                    aa_final_latlon_field,
                 )
                 result_array[lat_i, lon_i] = result_value
                 # Prepare values as origin values for u1 - u0 in next iteration
@@ -864,11 +878,9 @@ def reg_latlon_rotation_testing(
 ):
     """TODO."""
     example_lat_field = gc_lats_to_fields_mapping[example_lat][0]
-    ###print("%%%%%b" * 20, example_lat_field)
     example_across_lons = apply_reg_latlon_grid_rotational_symmetry(
         example_lat_field, lons.data.array
     )
-    ###print("%%%%%a" * 20, example_across_lons)
     ex_f1 = example_across_lons[four_test_lon_values_to_plot[0]]
     ex_f2 = example_across_lons[four_test_lon_values_to_plot[1]]
     ex_f3 = example_across_lons[four_test_lon_values_to_plot[2]]
@@ -986,12 +998,10 @@ def main():
     # The negative lat values will not yet have fields assigned. We need
     # to use symmetries to find those fields from the existing ones.
     # 11.a) Reflective symmetry about equator to get lower hemisphere.
-    print("%%%%%b" * 20, gc_lats_to_fields_mapping)
     apply_reg_latlon_grid_reflective_symmetry(
         gc_lats_to_fields_mapping, empty)
     apply_reg_latlon_grid_reflective_symmetry(
         aa_lats_to_fields_mapping, empty)
-    print("%%%%%b" * 20, gc_lats_to_fields_mapping)
     # 11.b) Rotational symmetry is applied during the integration loop
     # for efficiency. But do some basic testing here on it for validation.
     print(
