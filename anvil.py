@@ -70,13 +70,28 @@ def get_env_report():
 
 
 @timeit
-def get_u_field(path=None):
+def get_u_and_v_fields(path=None):
     """TODO."""
-    # Use example field for now, later read in from path
+    # latitude(160), longitude(320) i.e. 160x320
+    vector_fields = cf.read("test_data/ggap.nc")
+    u_component_field = cf.read("test_data/ggap.nc")[1]
+    v_component_field = cf.read("test_data/ggap.nc")[2]
+    u_p0_only = u_component_field[0, 0, :, :].squeeze()
+    v_p0_only = v_component_field[0, 0, :, :].squeeze()
+    print("u and v fields are:", u_p0_only, v_p0_only)
 
+    # Regrid since this is too coarse for now!
+    # latitude(5), longitude(8) i.e. 5x8
+    grid_field = cf.example_field(0)
+    u = u_p0_only.regrids(grid_field, method="linear")
+    v = v_p0_only.regrids(grid_field, method="linear")
+    print("u and v regridded fields are:", u, v)
+    f = u
     # Regular lat-lon grid test cases. In order of low -> high resolution.
+
+    # Use example field for now, later read in from path
     # Test case 1: lat x lon of 5 x 8
-    f = cf.example_field(0)
+    ###f = cf.example_field(0)
     # SLB timings 12/03/25: Time taken (in s) for 'main' to run: 1.1899
 
     # Test case 2: lat x lon of 30 x 48
@@ -610,8 +625,9 @@ def convert_degrees_to_radians(azimuth_angles_fl):
 
 @timeit
 def annulus_calculation(
-        annulus_lower, annulus_upper, gc_final_latlon_field,
-        aa_final_latlon_field, u, u_data, u0
+        u, v, u_data, v_data, u0, v0,
+        annulus_lower, annulus_upper,
+        gc_final_latlon_field, aa_final_latlon_field,
 ):
     """TODO."""
     # Get points within the r + dr annulus limits
@@ -635,20 +651,26 @@ def annulus_calculation(
     )
     gcd_mask = masked_gcd_field.data.mask
     print(f"mask is {gcd_mask}")
-    u_masked_for_annulus = u.copy()
-    new_mask_data = np.ma.array(u_data, mask=gcd_mask)
-    u_masked_for_annulus.set_data(new_mask_data)
 
-    # Apply same mask to the u-field
+    # Masking: apply mask from gc distances masking to the u-field
+    u_masked_for_annulus = u.copy()
+    u_new_mask_data = np.ma.array(u_data, mask=gcd_mask)
+    u_masked_for_annulus.set_data(u_new_mask_data)
+    v_masked_for_annulus = v.copy()
+    v_new_mask_data = np.ma.array(v_data, mask=gcd_mask)
+    v_masked_for_annulus.set_data(v_new_mask_data)
+
     ###print("MASKED RESULT", u_masked_for_annulus)
     nm_count = u_masked_for_annulus.count().data.array.item()
     print(
         "Non-masked points count is:", nm_count
-    )
+    )  # would be the same for u field
 
     # du, velocity increment du(r) = du(r, x) = du(x + r) − u(x)
     u1 = u_masked_for_annulus
-    velocity_increment = u1 - u0
+    v1 = v_masked_for_annulus
+    u_velocity_increment = u1 - u0
+    u_velocity_increment = v1 - v0
     # Can assume for the thinness of the annuli that the geometry
     # is approximately flat and therefore can use the sum of
     # squares for the squared norm value as per flat geometry
@@ -677,12 +699,13 @@ def annulus_calculation(
     result_value = result.data[0][0]
     print("Result value is", result_value)
 
-    return result_value, u1
+    return result_value, u1, v1
 
 
 @timeit
-def perform_intergration(
-        u, lats, lons, gc_lats_to_fields_mapping, aa_lats_to_fields_mapping):
+def perform_integration(
+        u, v, lats, lons, gc_lats_to_fields_mapping, aa_lats_to_fields_mapping
+):
     """TODO."""
     # Initialise result field and data array to set on it
     result_field = u.copy()
@@ -719,6 +742,7 @@ def perform_intergration(
         )
 
         u_data = u.data.array
+        v_data = u.data.array
         for lon_i, lon in enumerate(lons_data):
             print("START calculating iterations for lon", lon)
             gc_final_latlon_field = gc_across_lons[str(lon)]
@@ -728,20 +752,23 @@ def perform_intergration(
             #    f"{dr} and total steps of {len(annuli_limits) - 1}.\n"
             #)
 
-            print("START annuli calclulations for", lon, lat)
+            ###print("START annuli calclulations for", lon, lat)
             u0 = u[lat_i, lon_i]  # exact value at gridpoint
+            v0 = v[lat_i, lon_i]  # exact value at gridpoint
             for annulus_lower, annulus_upper in pairwise(annuli_limits):
                 # print(
                 #     "Pairwise annuli limits are:", annulus_lower,
                 #     annulus_upper
                 # )
-                result_value, u1 = annulus_calculation(
-                    annulus_lower, annulus_upper, gc_final_latlon_field,
-                    aa_final_latlon_field, u, u_data, u0
+                result_value, u1, v1 = annulus_calculation(
+                    u, v, u_data, v_data, u0, v0,
+                    annulus_lower, annulus_upper,
+                    gc_final_latlon_field, aa_final_latlon_field,
                 )
                 result_array[lat_i, lon_i] = result_value
-                print("u1 is", u1)
-                u0 = u1   # prepare for next iteration
+                # Prepare values as origin values for u1 - u0 in next iteration
+                u0 = u1
+                v0 = v1
 
     print("Finished discretised intergation loop.")
 
@@ -866,22 +893,24 @@ def main():
     get_env_report()
 
     # 2. Get data to use.
-    # Just use an example field for now, we only care about the regular lat-lon
-    # grid and its resolution, not the data itself.
-    f = get_u_field()
+    # u is the eastward vector component, b is the northward vector component
+    u, v = get_u_and_v_fields()
+    # Assume u and v have the same dimensional structure and grid, which
+    # is only natural if u and v are two components of a consistent vector
+    # field, hence only consult on u assuming it is equivalent for v
 
     # 3. Get all latitudes in the upper hemisphere - we can reflect about the
     # hemisphere to get all the lower hemisphere equivalents and then use
     # rotational symmetry of the Earth to get the information for each
     # longitude for a given latitude.
     print("Processing latitudes (and longitudes for later)")
-    lats_key, lats = f.coordinate("latitude", item=True)
+    lats_key, lats = u.coordinate("latitude", item=True)
     print("Lats values are", lats.data.array)
-    lons_key, lons = f.coordinate("longitude", item=True)
+    lons_key, lons = u.coordinate("longitude", item=True)
 
     # Subspacing to the upper hemisphere only
     kwargs = {lats_key: cf.ge(0)}  # greater than or equal to 0, i.e. equator
-    upper_hemi_lats_field = f.subspace(**kwargs)
+    upper_hemi_lats_field = u.subspace(**kwargs)
     print("Upper hemisphere latitudes are:", upper_hemi_lats_field)
 
     # FOR NOW: assuming lats and los are in degrees_* units, so need
@@ -902,9 +931,9 @@ def main():
     # 7. Get grid of n-vectors for every lat-lon grid-point. Must use original
     # f field not upper hemi field since the latter was subspaced down but we
     # need to find the full, original lat-lon grid of n-vectors.
-    grid_nvectors_field = get_nvectors_across_grid(f)
+    grid_nvectors_field = get_nvectors_across_grid(u)
     print(
-        f"*** Full grid of n-vectors for field {f!r} is:\n",
+        f"*** Full grid of n-vectors for field {u!r} is:\n",
         grid_nvectors_field
     )
     ###grid_nvectors_field.dump()
@@ -927,7 +956,7 @@ def main():
         gc_distance_fl = cf.read(gc_file_name)
     except:
         gc_distance_fl = validate_gc_distance_fl(
-            origin_nvectors, origin_ll_ref, grid_nvectors_field, f)
+            origin_nvectors, origin_ll_ref, grid_nvectors_field, u)
         cf.write(gc_distance_fl, gc_file_name)
 
     # 10. Get fields with bearings (azimuth angles)
@@ -937,7 +966,7 @@ def main():
         azimuth_angles_fl = cf.read(aa_file_name)
     except:
         azimuth_angles_fl = validate_azimuth_angles_fl(
-            origin_nvectors, origin_ll_ref, grid_nvectors_field, f)
+            origin_nvectors, origin_ll_ref, grid_nvectors_field, u)
         cf.write(azimuth_angles_fl, aa_file_name)
 
     # Convert degrees to radians for 0 to 2*pi limits
@@ -978,8 +1007,9 @@ def main():
 
     print("+++++++++++++++++ STARTING INTEGRATION +++++++++++++++++++++")
     # 12. Perform the integration
-    result_field = perform_intergration(
-        f, lats, lons, gc_lats_to_fields_mapping, aa_lats_to_fields_mapping)
+    result_field = perform_integration(
+        u, v, lats, lons, gc_lats_to_fields_mapping, aa_lats_to_fields_mapping
+    )
     print("All done!")
     print("Result is:")
     result_field.dump()
