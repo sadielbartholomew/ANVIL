@@ -680,17 +680,19 @@ def annulus_calculation(
     # Find the integrand using vector calculations and the formula
     # Formula for unit vector r-hat from polar coordinates is:
     # r = (cos(theta), sin(theta))
-    r_unit_vector = np.array((np.cos(angles), np.sin(angles)))
-    vector_velocity_increment = np.array(
-        u_velocity_increment, v_velocity_increment)
-    dot_product_result = np.dot(r_unit_vector, vector_velocity_increment)
+    r_unit_vector = np.stack((np.cos(angles), np.sin(angles)), axis=-1)
+    vector_velocity_increment = np.stack(
+        (u_velocity_increment, v_velocity_increment), axis=-1)
+    # Vecdot creates correct shape accounting for stacking arrays for vectors
+    # in arrays, as above
+    dot_product_result = np.vecdot(r_unit_vector, vector_velocity_increment)
     uv_vector_norm = u_velocity_increment**2 + v_velocity_increment**2
     print(
         "SHAPES ARE", r_unit_vector.shape, vector_velocity_increment.shape,
         dot_product_result.shape, uv_vector_norm.shape
     )
     integrand = dot_product_result * uv_vector_norm
-    print("INTEGRAND RESULT IS", integrand)
+    print("*** Integrand result is", integrand)
     # (Note is scalar as is the result of a dot product)
 
     # Finally, we can perform the actual integral!
@@ -704,16 +706,11 @@ def annulus_calculation(
             "per quadrant. May not be reliable."
         )
 
-    # Use this as example for now. Need to get weighting to
-    # work.
-    result = integrand.collapse(
-        "area: mean", ###weights=aa_final_latlon_field,
-        ###"area: integral", weights=aa_final_latlon_field,
-        ###measure=True
-    )
-    ###print("RESULT IS", result, result.shape, result.data)
-    result_value = result.data[0][0]
-    print("Result value is", result_value)
+    # TODO now apply angles to get dphi then have pre-integral result ready
+    # TODO angles
+
+    result_value = integrand  # including angles part too
+    print("Result value is", result_value, result_value.shape)
 
     return result_value, u1, v1
 
