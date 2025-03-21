@@ -670,13 +670,18 @@ def annulus_calculation(
     u1 = u_masked_for_annulus
     v1 = v_masked_for_annulus
     u_velocity_increment = u1 - u0
-    u_velocity_increment = v1 - v0
-    # Can assume for the thinness of the annuli that the geometry
-    # is approximately flat and therefore can use the sum of
-    # squares for the squared norm value as per flat geometry
-    integrand = velocity_increment * velocity_increment.collapse(
-        "area: sum_of_squares"
-    )  # scalar as is a dot product.
+    v_velocity_increment = v1 - v0
+    angle = aa_final_latlon_field
+
+    # Find the integrand using vector calculations and the formula
+    # Formula for unit vector r-hat from polar coordinates is:
+    # r = (cos(theta), sin(theta))
+    r_unit_vector = aa_final_latlon_field.cos(), aa_final_latlon_field.sin()
+    dot_prod_result = np.dot(r_unit_vector, velocity_increment)
+    uv_vector_norm = u_velocity_increment**2 + v_velocity_increment**2
+    integrand = dot_prod_result * uv_vector_norm
+    # (Note is scalar as is the result of a dot product)
+
     # Finally, we can perform the actual integral!
     if nm_count == 0:
         print("Warning: empty annulus!")
@@ -757,8 +762,7 @@ def perform_integration(
             v0 = v[lat_i, lon_i]  # exact value at gridpoint
             for annulus_lower, annulus_upper in pairwise(annuli_limits):
                 # print(
-                #     "Pairwise annuli limits are:", annulus_lower,
-                #     annulus_upper
+                #     "Annuli limits are:", annulus_lower, annulus_upper
                 # )
                 result_value, u1, v1 = annulus_calculation(
                     u, v, u_data, v_data, u0, v0,
