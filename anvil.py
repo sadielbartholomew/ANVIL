@@ -83,8 +83,8 @@ def get_u_and_v_fields(path=None):
     # Regrid since this is too coarse for now!
     # latitude(5), longitude(8) i.e. 5x8
     grid_field = cf.example_field(0)
-    u = u_p0_only.regrids(grid_field, method="linear")
-    v = v_p0_only.regrids(grid_field, method="linear")
+    u = u_p0_only  ###.regrids(grid_field, method="linear")
+    v = v_p0_only  ###.regrids(grid_field, method="linear")
     print("u and v regridded fields are:", u, v)
     # Regular lat-lon grid test cases. In order of low -> high resolution.
 
@@ -273,6 +273,40 @@ def get_great_circle_distance(
     return gc_distance, compare_to_earth_circumference(gc_distance)
 
 
+def get_chord_distance(
+        n_vector_a, n_vector_b, earth_radius_in_m=EARTH_RADIUS,
+        ec_comparison=False
+):
+    """TODO."""
+    distance = nv.euclidean_distance(
+        n_vector_a, n_vector_b, radius=earth_radius_in_m)[0]
+    ###print("gc_distance is (units of metres):", gc_distance)
+
+    if not ec_comparison:
+        return distance
+
+    return distance, compare_to_earth_circumference(distance)
+
+
+def get_euclidean_2d_distance(
+        latlon1, latlon2, earth_radius_in_m=EARTH_RADIUS,
+        ec_comparison=False
+):
+    """TODO."""
+    # TODOMAKE 0 AND 1 NOT 1, 2
+    lat1, lon1 = latlon1
+    lat2, lon2 = latlon2
+    # Basic Pythagorean theorem
+    planar_2d_distance = np.sqrt((lat2 - lat1)**2 + (lon2 - lon1)**2)
+    ###print("gc_distance is (units of metres):", gc_distance)
+
+    if not ec_comparison:
+        return planar_2d_distance
+
+    return planar_2d_distance, compare_to_earth_circumference(
+        planar_2d_distance)
+
+
 ###@timeit
 def get_great_circle_distances(
         n_vectors_a, n_vectors_b, earth_radius_in_m=EARTH_RADIUS,
@@ -343,7 +377,6 @@ def get_azimuth_angle_between(
         return azimuth
 
 
-@timeit
 def perform_nvector_field_iteration(
         r0_i, r0_nvector, result_data_size, lats, lons,
         operation, long_name_start, units_string, origin_nvectors,
@@ -411,7 +444,7 @@ def perform_nvector_field_iteration(
 
     set_reference_latlon_properties(output_field_for_r0, r0_lat, r0_lon)
     rlat, rlon = get_reference_latlon_properties(output_field_for_r0)
-    print("Registered reference oriign lat and lon of:", rlat, rlon)
+    print("Registered reference origin lat and lon of:", rlat, rlon)
 
     return output_field_for_r0
 
@@ -452,6 +485,63 @@ def get_gc_distance_fieldlist(
         origin_nvectors, origin_ll_ref,
         grid_nvectors_field, grid_nvectors_field_flattened,
     )
+
+
+def get_chord_distance_fieldlist(
+        origin_nvectors, origin_ll_ref,
+        grid_nvectors_field, grid_nvectors_field_flattened,
+):
+    """TODO.
+
+    Note: not core to library, just for useful comparison to GC distance.
+    """
+    return perform_operation_with_nvectors_on_origin_fl(
+        get_chord_distance, "chord_distance", "m",
+        origin_nvectors, origin_ll_ref,
+        grid_nvectors_field, grid_nvectors_field_flattened,
+    )
+
+
+def get_planar_distance_fieldlist(upper_hemi_lats_field, origin_field):
+    """TODO.
+
+    Note: not core to library, just for useful comparison to GC distance.
+    """
+    output_fieldlist = cf.FieldList()
+    lats = origin_field.coordinate("latitude").data.array
+    lons = origin_field.coordinate("longitude").data.array
+
+    lats_o = upper_hemi_lats_field.coordinate("latitude").data.array
+    lons_o = upper_hemi_lats_field.coordinate("longitude").data.array
+    # For each field in upper hemi lats
+    for lat_oi, lat_o in enumerate(lats_o):
+        print("lat_o is", lat_o)
+        # Take first lon only!
+        lon_o = lons_o[0]
+        print("lon_o is", lon_o)
+        # TODO apply simple vectorisation array op instead
+        # once not under the cosh!
+        distance_data = np.zeros(origin_field.shape)
+        for lat_i, lat in enumerate(lats):
+            for lon_i, lon in enumerate(lons):
+                euc_2d_data = get_euclidean_2d_distance(
+                    (lat, lon), (lat_o, lon_o))
+                distance_data[lat_i, lon_i] = euc_2d_data
+
+        dist_field = origin_field.copy()
+        dist_field.set_data(distance_data)
+        clear_selected_properties(dist_field)
+
+        dist_field.long_name = (
+            f"euclidean_2d_distance_from_point_at_lat_"
+            f"{np.round(lat_o, 2)}_lon_{np.round(lon_o, 2)}"
+        )
+        dist_field.override_units("m", inplace=True)
+
+        output_fieldlist.append(dist_field)
+
+    print("OUTPUT FIELDLIST is", output_fieldlist)
+    return output_fieldlist
 
 
 def get_azimuth_angles_fieldlist(
@@ -507,6 +597,57 @@ def validate_azimuth_angles_fl(
             f"has data of {f.data}."
         )
     return azimuth_angles_fl
+
+
+def compare_euclidean_2d_distance_fl(field_over, f):
+    """TODO.
+
+    Note: not core to library, just for useful comparison to GC distance.
+    """
+    print("Starting FieldList calculations for PLANAR distance.")
+    planar_distance_fl = get_planar_distance_fieldlist(field_over, f)
+    print(
+        "\n*** Done FieldList calculations for PLANAR distance. Have total of "
+        f"{len(planar_distance_fl)} fields in result."
+    )
+    for field in planar_distance_fl:
+        # As a basic test, only one point (coresponding to the r0_nvector grid
+        # point) should have a 0.0 distance since it will be a coincident point
+        f_data = field.data.array
+        ###assert (np.count_nonzero(f_data) + 1 == f_data.size)
+        print(
+            f"\nOutput PLANAR distance field with name '{field.long_name}' "
+            f"has data of {field.data}."
+        )
+
+    return planar_distance_fl
+
+
+def compare_chord_distance_fl(
+        origin_nvectors, origin_ll_ref, grid_nvectors_field, f
+):
+    """TODO.
+
+    Note: not core to library, just for useful comparison to GC distance.
+    """
+    print("Starting FieldList calculations for CHORD distance.")
+    chord_distance_fl = get_chord_distance_fieldlist(
+        origin_nvectors, origin_ll_ref, grid_nvectors_field, f)
+    print(
+        "\n*** Done FieldList calculations for CHORD distance. Have total of "
+        f"{len(chord_distance_fl)} fields in result."
+    )
+    for field in chord_distance_fl:
+        # As a basic test, only one point (coresponding to the r0_nvector grid
+        # point) should have a 0.0 distance since it will be a coincident point
+        f_data = field.data.array
+        assert (np.count_nonzero(f_data) + 1 == f_data.size)
+        print(
+            f"\nOutput CHORD distance field with name '{field.long_name}' "
+            f"has data of {field.data}."
+        )
+
+    return chord_distance_fl
 
 
 def map_fields_to_reference_latlon_points(fieldlist, lats_values):
@@ -724,6 +865,8 @@ def perform_integration(
     result_field = u.copy()
     clear_selected_properties(result_field)
     result_array = np.zeros(u.shape)
+    # Expand result_array shape to hold full shape within each point, as
+    # required to store pre-integral result
 
     # Set limits
     earth_circ = 2 * np.pi * EARTH_RADIUS
@@ -964,23 +1107,41 @@ def main():
 
     # 9. Get fields with GC distances
     gc_file_name = "test_outputs/out_gc_distance.nc"
-    try:
-        # If already calculated
-        gc_distance_fl = cf.read(gc_file_name)
-    except:
+    ###try:
+    ###    # If already calculated
+    ###    gc_distance_fl = cf.read(gc_file_name)
+    if True:  ###except:
         gc_distance_fl = validate_gc_distance_fl(
             origin_nvectors, origin_ll_ref, grid_nvectors_field, u)
         cf.write(gc_distance_fl, gc_file_name)
 
+    chord_distance_fl = compare_chord_distance_fl(
+        origin_nvectors, origin_ll_ref, grid_nvectors_field, u)
+    cf.write(
+        chord_distance_fl,
+        "test_outputs/chord_distance_for_comparison.nc"
+    )
+
+    print("UPTO")
+    euclidean_2d_distance_fl = compare_euclidean_2d_distance_fl(
+        upper_hemi_lats_field, u)
+    cf.write(
+       euclidean_2d_distance_fl,
+        "test_outputs/euclidean_2d_distance_for_comparison.nc"
+    )
+    # SADIE TEMP
+    exit()
+
     # 10. Get fields with bearings (azimuth angles)
     aa_file_name = "test_outputs/out_azimuth_angle.nc"
-    try:
-        # If already calculated
-        azimuth_angles_fl = cf.read(aa_file_name)
-    except:
+    ###try:
+    ###    # If already calculated
+    ###    azimuth_angles_fl = cf.read(aa_file_name)
+    if True:  ###except:
         azimuth_angles_fl = validate_azimuth_angles_fl(
             origin_nvectors, origin_ll_ref, grid_nvectors_field, u)
         cf.write(azimuth_angles_fl, aa_file_name)
+
 
     # Convert degrees to radians for 0 to 2*pi limits
     convert_degrees_to_radians(azimuth_angles_fl)
