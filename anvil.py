@@ -296,8 +296,25 @@ def get_euclidean_2d_distance(
     # TODOMAKE 0 AND 1 NOT 1, 2
     lat1, lon1 = latlon1
     lat2, lon2 = latlon2
+    # Need these in radians for the formula
+    # TODO AS FIELD USE, convert convert_degrees_to_radians(azimuth_angles_fl)
+    lat1 = np.deg2rad(lat1)
+    lat2 = np.deg2rad(lat2)
+    lon1 = np.deg2rad(lon1)
+    lon2 = np.deg2rad(lon2)
+    print("RAD LATS FOR PLANAR EXAMPLE:", lat1, lat2)
+
     # Basic Pythagorean theorem
-    planar_2d_distance = np.sqrt((lat2 - lat1)**2 + (lon2 - lon1)**2)
+    # Conversion of flt plane / Mercator projection formula
+    # of sqrt(x**2 + y**2) to lat/lon points is approximatley:
+    ref_lat = (lat1 + lat2) / 2
+    lat_diff = lat2 - lat1  # no wrapping/cyclicty concerns here - I think?
+    lon_diff = np.remainder(lon2 - lon1, 2 * np.pi)
+    lon_diff_with_wrapping = np.where(
+        lon_diff > np.pi, lon_diff - 2 * np.pi, lon_diff)
+    planar_2d_distance = np.sqrt(
+        lat_diff**2 + (lon_diff_with_wrapping * np.cos(ref_lat))**2
+    ) * earth_radius_in_m
     ###print("gc_distance is (units of metres):", gc_distance)
 
     if not ec_comparison:
